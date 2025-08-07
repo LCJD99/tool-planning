@@ -1,3 +1,4 @@
+from typing import Callable, List, Dict, Any
 def create_function_name_map(functions: List[Callable[..., Any]]) -> Dict[str, Callable[..., Any]]:
     function_map = {}
     for func in functions:

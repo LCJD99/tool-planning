@@ -7,7 +7,7 @@ allowing easy access, management, and memory optimization of AI tool models.
 
 from typing import Dict, Any, Optional, Type
 import logging
-from .models.BaseModel import BaseModel
+from tools.models.BaseModel import BaseModel
 
 class ToolRegistry:
     """
