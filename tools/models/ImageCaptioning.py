@@ -2,33 +2,35 @@
 from transformers import VisionEncoderDecoderModel, ViTImageProcessor, AutoTokenizer
 import torch
 from PIL import Image
-import os
 from typing import List
-import time
-import logging
-import tools.models.BaseModel as BaseModel
+from tools.models.BaseModel import BaseModel
+from tools.registry import register_tool, get_tool
+from utils.decorator import time_it
 
 
-class ImageCaptioningModel(BaseModel.BaseModel):
+class ImageCaptioningModel(BaseModel):
     def __init__(self):
-        logging.info("ImageCaptioning_Model_Loading_Start")
-        load_start_time = time.time()
-
-        self.model = VisionEncoderDecoderModel.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
-        self.feature_extractor = ViTImageProcessor.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
-        self.tokenizer = AutoTokenizer.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
-        
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model.to(self.device)
-        
+        self.taskname = "ImageCaptioning"
+        self.name = "nlpconnect/vit-gpt2-image-captioning"
         self.max_length = 16
         self.num_beams = 1
         self.gen_kwargs = {"max_length": self.max_length, "num_beams": self.num_beams}
-        
-        load_end_time = time.time()
-        duration = load_end_time - load_start_time
-        logging.info(f"ImageCaptioning_Model_Loading_Finish with {duration:3f}s" )
 
+    @time_it(task_name="ImageCaptioning_Preload")
+    def preload(self):
+        """Preload model weights to CPU"""
+        self.model = VisionEncoderDecoderModel.from_pretrained(self.name)
+        self.feature_extractor = ViTImageProcessor.from_pretrained(self.name)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.name)
+
+    
+    @time_it(task_name="ImageCaptioning_Load")
+    def load(self):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
+
+
+    @time_it(task_name="ImageCaptioning_Predict")
     def predict(self, image_paths: List[str]) -> List[str]:
         """Generate captions for given images.
         
@@ -38,9 +40,6 @@ class ImageCaptioningModel(BaseModel.BaseModel):
         Returns:
             List of generated captions
         """
-        logging.info("ImageCaptioning_Prediction_Start")
-        start_computing_time = time.time()
-        
         images = []
         for image_path in image_paths:
             i_image = Image.open(image_path)
@@ -54,23 +53,15 @@ class ImageCaptioningModel(BaseModel.BaseModel):
         output_ids = self.model.generate(pixel_values, **self.gen_kwargs)
         preds = self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         preds = [pred.strip() for pred in preds]
-
-        end_computing_time = time.time()
-        computing_duration = end_computing_time - start_computing_time
-        
-        logging.info(f"ImageCaptioning_Prediction_Finish with {computing_duration:.3f}s")
-        
-        # Swap model weights to CPU and clear GPU memory if FRONTEND_SWAP is enabled
-        if os.getenv('FRONTEND_SWAP', 'false').lower() == 'true':
-            self._swap_to_cpu_and_clear_gpu()
         
         return preds
+
+    def __del__(self):
+        """Clear model and tokenizer to free memory."""
+        self.discord()
         
-# Global instance
-_model_instance = None
 
-
-def get_image_caption(image_path: str) -> str:
+def image_captioning(image_path: str) -> str:
     """Generate caption for a single image.
     
     Args:
@@ -79,16 +70,18 @@ def get_image_caption(image_path: str) -> str:
     Returns:
         Generated caption as a string
     """
-    global _model_instance
-    if _model_instance is None:
-        _model_instance = ImageCaptioningModel()
+    # Get from registry or create and register if not exists
+    model_instance = get_tool('image_captioning')
+    if model_instance is None:
+        model_instance = ImageCaptioningModel()
+        register_tool('image_captioning', model_instance)
     
-    captions = _model_instance.predict([image_path])
+    captions = model_instance.predict([image_path])
     return captions[0] if captions else "No caption generated"
 
 
 if __name__ == "__main__":
     # Example usage
     image_path = "path/to/your/image.jpg"
-    caption = get_image_caption(image_path)
+    caption = image_captioning(image_path)
     print(f"Generated caption: {caption}")
