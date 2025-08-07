@@ -1,11 +1,11 @@
 """Text-to-image generation model using Stable Diffusion."""
-from diffusers import StableDiffusionPipeline
+#from diffusers import StableDiffusionPipeline
 import torch
 from typing import List, Optional
 from PIL import Image
 import os
 from tools.models.BaseModel import BaseModel
-from tools.registry import register_tool, get_tool
+from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 
 

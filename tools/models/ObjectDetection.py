@@ -4,7 +4,7 @@ import torch
 from PIL import Image
 from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
-from tools.registry import register_tool, get_tool
+from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 
 
