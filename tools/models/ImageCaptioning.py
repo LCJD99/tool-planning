@@ -76,6 +76,8 @@ def image_captioning(image_path: str) -> str:
         model_instance = ImageCaptioningModel()
         register_tool('image_captioning', model_instance)
     
+    model_instance.preload()
+    model_instance.load()
     captions = model_instance.predict([image_path])
     return captions[0] if captions else "No caption generated"
 
