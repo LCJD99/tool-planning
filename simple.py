@@ -1,6 +1,6 @@
 from agent.MulModelAgent import MulModelAgent
 
-agent = MulModelAgent(model_name="gpt-4o")
+agent = MulModelAgent()
 
-response = agent.process("can you captioning the picture(./picture) use tools image_captioning?", max_iterations=3)
-print(response) 
+response = agent.process("can you captioning the picture(./pic1.jpg) use tools image_captioning?", max_iterations=3)
+print(response)
