@@ -28,55 +28,55 @@ class ImageSuperResolutionModel(BaseModel):
     @time_it(task_name="ImageSuperResolution_Predict")
     def predict(self, image_paths: List[str], output_paths: List[str] = None) -> List[np.ndarray]:
         """Enhance resolution of images.
-        
+
         Args:
             image_paths: List of image file paths
             output_paths: Optional list of output paths to save enhanced images.
                           Must have the same length as image_paths if provided.
-            
+
         Returns:
             List of enhanced image arrays
         """
         results = []
-        
+
         # Validate output_paths if provided
         if output_paths is not None and len(output_paths) != len(image_paths):
             raise ValueError("If output_paths is provided, it must have the same length as image_paths")
-        
+
         for i, image_path in enumerate(image_paths):
             image = Image.open(image_path)
-            
+
             inputs = self.processor(image, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
+
             with torch.no_grad():
                 outputs = self.model(**inputs)
-            
+
             output = outputs.reconstruction.data.squeeze().float().cpu().clamp_(0, 1).numpy()
             output = np.moveaxis(output, source=0, destination=-1)
             output = (output * 255.0).round().astype(np.uint8)
-            
+
             # Save the enhanced image if output path is provided
             if output_paths is not None:
                 output_image = Image.fromarray(output)
                 output_image.save(output_paths[i])
-            
+
             results.append(output)
-        
+
         return results
 
     def __del__(self):
         """Clear model and processor to free memory."""
         self.discord()
-        
 
-def image_super_resolution(image_path: str, output_path: str = None) -> np.ndarray:
+
+def image_super_resolution(image_path: str, output_path: str ) -> np.ndarray:
     """Enhance resolution of an image.
-    
+
     Args:
         image_path: Path to the image file
         output_path: Optional path to save the enhanced image directly
-        
+
     Returns:
         Enhanced image array
     """
@@ -85,14 +85,14 @@ def image_super_resolution(image_path: str, output_path: str = None) -> np.ndarr
     if model_instance is None:
         model_instance = ImageSuperResolutionModel()
         register_tool('image_super_resolution', model_instance)
-    
+
     model_instance.preload()
     model_instance.load()
-    
+
     # If output_path is provided, pass it to predict method
     output_paths = [output_path] if output_path is not None else None
     enhanced_images = model_instance.predict([image_path], output_paths)
-    
+
     # Return the enhanced image array
     if enhanced_images:
         return enhanced_images[0]
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     output_path = "path/to/output/enhanced_image.jpg"
     enhanced_image = image_super_resolution(image_path, output_path)
     print(f"Enhanced image saved as {output_path}")
-    
+
     # Example usage 2: Without output path - get the enhanced image array
     image_path = "path/to/your/image.jpg"
     enhanced_image = image_super_resolution(image_path)
