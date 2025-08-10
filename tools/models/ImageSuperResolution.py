@@ -26,17 +26,24 @@ class ImageSuperResolutionModel(BaseModel):
         self.model.to(self.device)
 
     @time_it(task_name="ImageSuperResolution_Predict")
-    def predict(self, image_paths: List[str]) -> List[np.ndarray]:
+    def predict(self, image_paths: List[str], output_paths: List[str] = None) -> List[np.ndarray]:
         """Enhance resolution of images.
         
         Args:
             image_paths: List of image file paths
+            output_paths: Optional list of output paths to save enhanced images.
+                          Must have the same length as image_paths if provided.
             
         Returns:
             List of enhanced image arrays
         """
         results = []
-        for image_path in image_paths:
+        
+        # Validate output_paths if provided
+        if output_paths is not None and len(output_paths) != len(image_paths):
+            raise ValueError("If output_paths is provided, it must have the same length as image_paths")
+        
+        for i, image_path in enumerate(image_paths):
             image = Image.open(image_path)
             
             inputs = self.processor(image, return_tensors="pt")
@@ -49,6 +56,11 @@ class ImageSuperResolutionModel(BaseModel):
             output = np.moveaxis(output, source=0, destination=-1)
             output = (output * 255.0).round().astype(np.uint8)
             
+            # Save the enhanced image if output path is provided
+            if output_paths is not None:
+                output_image = Image.fromarray(output)
+                output_image.save(output_paths[i])
+            
             results.append(output)
         
         return results
@@ -58,11 +70,12 @@ class ImageSuperResolutionModel(BaseModel):
         self.discord()
         
 
-def image_super_resolution(image_path: str) -> np.ndarray:
+def image_super_resolution(image_path: str, output_path: str = None) -> np.ndarray:
     """Enhance resolution of an image.
     
     Args:
         image_path: Path to the image file
+        output_path: Optional path to save the enhanced image directly
         
     Returns:
         Enhanced image array
@@ -75,19 +88,29 @@ def image_super_resolution(image_path: str) -> np.ndarray:
     
     model_instance.preload()
     model_instance.load()
-    enhanced_images = model_instance.predict([image_path])
     
-    # Convert to PIL Image and save or return as needed
+    # If output_path is provided, pass it to predict method
+    output_paths = [output_path] if output_path is not None else None
+    enhanced_images = model_instance.predict([image_path], output_paths)
+    
+    # Return the enhanced image array
     if enhanced_images:
         return enhanced_images[0]
     return None
 
 
 if __name__ == "__main__":
-    # Example usage
+    # Example usage 1: With output path - directly save the enhanced image
+    image_path = "path/to/your/image.jpg"
+    output_path = "path/to/output/enhanced_image.jpg"
+    enhanced_image = image_super_resolution(image_path, output_path)
+    print(f"Enhanced image saved as {output_path}")
+    
+    # Example usage 2: Without output path - get the enhanced image array
     image_path = "path/to/your/image.jpg"
     enhanced_image = image_super_resolution(image_path)
     if enhanced_image is not None:
+        # Process the enhanced image as needed
         output_image = Image.fromarray(enhanced_image)
-        output_image.save("enhanced_image.jpg")
-        print(f"Enhanced image saved as enhanced_image.jpg")
+        output_image.save("enhanced_image_2.jpg")
+        print(f"Enhanced image saved as enhanced_image_2.jpg")
