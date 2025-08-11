@@ -16,6 +16,7 @@ from torchmetrics.multimodal import CLIPScore
 from agent.MulModelAgent import MulModelAgent
 from logger.config import setup_logger
 import logging
+from benchmark.general_dataset import GeneralDataset
 
 _N = 1
 
@@ -75,35 +76,21 @@ def run_zero_gpt():
     agent = MulModelAgent()
 
     for i in range(task_len):
-        task_description = test_tasks[i]
+        prompt = test_tasks[i]
         task_index = test_task_idx[i]
         task_rewards = []
-
-        # with torch.no_grad():
-        #     completion = openai.ChatCompletion.create(model="gpt-3.5-turbo",
-        #                                               messages=[{"role": "user", \
-        #                                                          "content": "Problem: " +\
-        #                                                          task_description +\
-        #                                                          "\n What is its soltuion? Use 'Setp' to mark."}]
-        #                                               )
-        #     gpt_output = completion.choices[0].message['content'].split('\n')
-        #     gpt_steps = []
-        #     for l,j in enumerate(gpt_output):
-        #         if j[0:4] == "Step":
-        #             gpt_steps.append(gpt_output[l])
-        #     module_list_org = match_module_seq(gpt_steps, sentence_model)
-        #     x = module_list_org.split(",")
-        #     module_list = ",".join(sorted(set(x), key=x.index))
-        # print(task_description)
-        # print(module_list)
-
-
-        # breakpoint()
-
+        dataset = GeneralDataset(str(task_index), data_path)
 
         for j in range(_N):
-            response = agent.process(f"{task_description}, picture path: {data_path}{task_index}/inputs/images/{j}.jpg", max_iterations=3)
+            batch = dataset[j]
+            if batch['input']['text'] is not None:
+                prompt = f"{prompt}, text: {batch['input']['text'][j]}"
+            if batch['input']['image'] is not None:
+                prompt = f"{prompt}, picture path: {batch['input']['image'][j]}"
+            response = agent.process(prompt, max_iterations=10)
+            logging.info(f"Response: {response}")
             return
+
             inputs = list(batch['input'][0])
 
             if 0 <= task_index <= 14:
