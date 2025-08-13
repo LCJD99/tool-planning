@@ -11,7 +11,7 @@ from utils.decorator import time_it
 class VisualQuestionAnsweringModel(BaseModel):
     def __init__(self):
         self.taskname = "VisualQuestionAnswering"
-        self.name = "microsoft/git-base-vqa"
+        self.name = "microsoft/git-base"
         self.max_length = 50
 
     @time_it(task_name="VisualQuestionAnswering_Preload")
@@ -28,25 +28,25 @@ class VisualQuestionAnsweringModel(BaseModel):
     @time_it(task_name="VisualQuestionAnswering_Predict")
     def predict(self, image_paths: List[str], questions: List[str]) -> List[str]:
         """Answer questions about images.
-        
+
         Args:
             image_paths: List of image file paths
             questions: List of questions corresponding to each image
-            
+
         Returns:
             List of answers to the questions
         """
         answers = []
-        
+
         for image_path, question in zip(image_paths, questions):
             # Load the image
             image = Image.open(image_path)
             if image.mode != "RGB":
                 image = image.convert(mode="RGB")
-                
+
             # Prepare inputs
             inputs = self.processor(images=image, text=question, return_tensors="pt").to(self.device)
-            
+
             # Generate answer
             with torch.no_grad():
                 outputs = self.model.generate(
@@ -55,25 +55,25 @@ class VisualQuestionAnsweringModel(BaseModel):
                     num_beams=5,
                     early_stopping=True
                 )
-            
+
             # Decode generated answer
             answer = self.processor.decode(outputs[0], skip_special_tokens=True)
             answers.append(answer)
-        
+
         return answers
 
     def __del__(self):
         """Clear model and processor to free memory."""
         self.discord()
-        
+
 
 def answer_visual_question(image_path: str, question: str) -> str:
     """Answer a question about an image.
-    
+
     Args:
         image_path: Path to the image file
         question: The question to answer about the image
-        
+
     Returns:
         Answer to the question
     """
@@ -82,7 +82,7 @@ def answer_visual_question(image_path: str, question: str) -> str:
     if model_instance is None:
         model_instance = VisualQuestionAnsweringModel()
         register_tool('visual_question_answering', model_instance)
-    
+
     model_instance.preload()
     model_instance.load()
     answers = model_instance.predict([image_path], [question])
@@ -91,8 +91,8 @@ def answer_visual_question(image_path: str, question: str) -> str:
 
 if __name__ == "__main__":
     # Example usage
-    image_path = "path/to/your/image.jpg"
-    question = "What is shown in this image?"
+    image_path = "enhanced_image.jpg"
+    question = "what are you doing?"
     answer = answer_visual_question(image_path, question)
     print(f"Question: {question}")
     print(f"Answer: {answer}")

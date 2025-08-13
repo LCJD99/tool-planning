@@ -2,6 +2,16 @@ from evaluate import load
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer, util
+from PIL import Image
+import re
+
+def text2picpath(text: str) -> str:
+    match = re.search(r'(/.*?\.jpg)', text)
+    if match:
+        path = match.group(1)
+        return path
+    else:
+        return ""
 
 def txt_eval(predictions, references, bertscore, device="cuda"):
     score = bertscore.compute(
@@ -24,7 +34,18 @@ def txt_loader(path):
     return text
 
 
-def image_similarity(im1, im2, model, extractor):
+def image_similarity(im_path1, im_path2, model, extractor):
+
+    def path2PIL(paths):
+        imgs = []
+        img = Image.open(paths[0])
+        img = img.convert("RGB")
+        imgs.append(img)
+        return imgs
+
+    im1 = path2PIL(im_path1)
+    im2 = path2PIL(im_path2)
+
     batch_size = len(im1)
     # Load two images
     img1 = extractor(im1, return_tensors="pt")
@@ -36,7 +57,8 @@ def image_similarity(im1, im2, model, extractor):
         emb2 = model(img2.pixel_values)[0].squeeze().numpy()
 
     # Compute the cosine similarity between the embeddings
-    dist = np.mean(np.array([np.linalg.norm(emb1[i] - emb2[i], ord='fro') for i in range(batch_size)]))
+
+    dist = np.mean(np.array([np.linalg.norm(emb1[i] - emb2[i]) for i in range(batch_size)]))
     return dist
 
 def module_seq_filter(module_seq, task_id):
@@ -158,3 +180,13 @@ def match_module_seq(model_steps, sentence_model):
     #     print("{} \t\t {} \t\t Score: {:.4f}".format(sentences1[i], sentences2[i], cosine_scores[i][i]))
     module_seq = module_seq.strip()[:-1]
     return module_seq
+
+if __name__ == '__main__':
+    from transformers import AutoModel, AutoFeatureExtractor
+    vit_ckpt = "nateraw/vit-base-beans"
+    vit = AutoModel.from_pretrained(vit_ckpt)
+    vit.eval()
+    vit_extractor = AutoFeatureExtractor.from_pretrained(vit_ckpt)
+    dist = image_similarity(['pic1.jpg'], ['enhanced_image.jpg'], vit, vit_extractor)
+    print(dist)
+

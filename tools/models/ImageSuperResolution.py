@@ -26,7 +26,7 @@ class ImageSuperResolutionModel(BaseModel):
         self.model.to(self.device)
 
     @time_it(task_name="ImageSuperResolution_Predict")
-    def predict(self, image_paths: List[str], output_paths: List[str] = None) -> List[np.ndarray]:
+    def predict(self, image_paths: List[str], output_paths: List[str]) -> List[str]:
         """Enhance resolution of images.
 
         Args:
@@ -35,7 +35,7 @@ class ImageSuperResolutionModel(BaseModel):
                           Must have the same length as image_paths if provided.
 
         Returns:
-            List of enhanced image arrays
+            output_path: output path
         """
         results = []
 
@@ -57,20 +57,18 @@ class ImageSuperResolutionModel(BaseModel):
             output = (output * 255.0).round().astype(np.uint8)
 
             # Save the enhanced image if output path is provided
-            if output_paths is not None:
-                output_image = Image.fromarray(output)
-                output_image.save(output_paths[i])
+            output_image = Image.fromarray(output)
+            output_image.save(output_paths[i])
 
-            results.append(output)
 
-        return results
+        return output_paths
 
     def __del__(self):
         """Clear model and processor to free memory."""
         self.discord()
 
 
-def image_super_resolution(image_path: str, output_path: str ) -> np.ndarray:
+def image_super_resolution(image_path: str, output_path: str ) -> str:
     """Enhance resolution of an image.
 
     Args:
@@ -78,7 +76,7 @@ def image_super_resolution(image_path: str, output_path: str ) -> np.ndarray:
         output_path: Optional path to save the enhanced image directly
 
     Returns:
-        Enhanced image array
+        Enhanced image path
     """
     # Get from registry or create and register if not exists
     model_instance = get_tool('image_super_resolution')

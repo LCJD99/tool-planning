@@ -26,7 +26,7 @@ def run_zero_gpt():
     """
     assign openagi data path
     """
-    data_path = "/home/zhangjingzhou/tool-planning/datasets/"
+    data_path = "/home/zhangjingzhou/tool-planning/datasets/openagi/"
     eval_device = "cuda"
     openai.api_key = "fake_openai"
     batch_size = 1
@@ -36,7 +36,7 @@ def run_zero_gpt():
     task_discriptions = txt_loader(data_path+"task_description.txt")
     # task_idx = [0,21,61,105,110,120,10,35,62,107,115]
     # test_task_idx = [2,3,10,15,20,35,45,55,65,70,70,90,106,107]
-    test_task_idx = [36]
+    test_task_idx = [20]
     # test_dataloaders = []
     # for i in test_task_idx:
     #     dataset = GeneralDataset(i, data_path)
@@ -86,30 +86,32 @@ def run_zero_gpt():
             if batch['input']['text'] is not None:
                 prompt = f"{prompt}, text: {batch['input']['text'][j]}"
             if batch['input']['image'] is not None:
-                prompt = f"{prompt}, picture path: {batch['input']['image'][j]}"
-            response = agent.process(prompt, max_iterations=10)
+                prompt = f"{prompt}, picture path: {batch['input']['image'][j]}, if picture is not good, first resolution it"
+            if task_index <= 14:
+                prompt = f"{prompt}, onle return new picture path in '{{}}' easy for me to parse"
+            else:
+                prompt = f"{prompt}, give me last tool output only"
+            logging.info(f"prompt: {prompt}")
+            response = agent.process(prompt, max_iterations=20)
             logging.info(f"Response: {response}")
-            return
 
-            inputs = list(batch['input'][0])
+            # inputs = list(batch['input'][0])
 
+            predictions = [response]
             if 0 <= task_index <= 14:
-                outputs = list(batch['output'][0])
-                dist = image_similarity(predictions, outputs, vit, vit_extractor)
+                path = text2picpath(response)
+                output = batch['output']['image'][j]
+                dist = image_similarity([path], [output], vit, vit_extractor)
                 task_rewards.append(dist/100)
             elif 15<= task_index <=104 or 107<= task_index:
-                outputs = list(batch['output'][0])
-                f1 = np.mean(txt_eval(predictions, outputs, bertscore, device=eval_device))
+                output = batch['output']['text'][j]
+                f1 = np.mean(txt_eval(predictions, [output], bertscore, device=eval_device))
                 task_rewards.append(f1)
             else:
                 score = clip_score(predictions, inputs)
                 task_rewards.append(score.detach()/100)
 
         ave_task_reward = np.mean(task_rewards)
-
-
-        seqCombination.close_module_seq()
-
 
         if 0 <=test_task_idx[i] <=14:
             similairies.append(ave_task_reward)
