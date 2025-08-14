@@ -23,7 +23,7 @@ class ImageCaptioningModel(BaseModel):
         self.feature_extractor = ViTImageProcessor.from_pretrained(self.name)
         self.tokenizer = AutoTokenizer.from_pretrained(self.name)
 
-    
+
     @time_it(task_name="ImageCaptioning_Load")
     def load(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,10 +33,10 @@ class ImageCaptioningModel(BaseModel):
     @time_it(task_name="ImageCaptioning_Predict")
     def predict(self, image_paths: List[str]) -> List[str]:
         """Generate captions for given images.
-        
+
         Args:
             image_paths: List of image file paths
-            
+
         Returns:
             List of generated captions
         """
@@ -53,20 +53,20 @@ class ImageCaptioningModel(BaseModel):
         output_ids = self.model.generate(pixel_values, **self.gen_kwargs)
         preds = self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         preds = [pred.strip() for pred in preds]
-        
+
         return preds
 
     def __del__(self):
         """Clear model and tokenizer to free memory."""
         self.discord()
-        
+
 
 def image_captioning(image_path: str) -> str:
     """Generate caption for a single image.
-    
+
     Args:
         image_path: Path to the image file
-        
+
     Returns:
         Generated caption as a string
     """
@@ -75,10 +75,11 @@ def image_captioning(image_path: str) -> str:
     if model_instance is None:
         model_instance = ImageCaptioningModel()
         register_tool('image_captioning', model_instance)
-    
+
     model_instance.preload()
     model_instance.load()
     captions = model_instance.predict([image_path])
+    model_instance.discord()
     return captions[0] if captions else "No caption generated"
 
 

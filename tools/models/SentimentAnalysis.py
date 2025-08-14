@@ -28,15 +28,15 @@ class SentimentAnalysisModel(BaseModel):
     @time_it(task_name="SentimentAnalysis_Predict")
     def predict(self, texts: List[str]) -> List[Dict[str, Any]]:
         """Analyze sentiment of texts.
-        
+
         Args:
             texts: List of text strings to analyze
-            
+
         Returns:
             List of dictionaries containing sentiment label and score
         """
         results = []
-        
+
         for text in texts:
             # Tokenize the text
             inputs = self.tokenizer(
@@ -46,37 +46,37 @@ class SentimentAnalysisModel(BaseModel):
                 truncation=True,
                 max_length=512
             ).to(self.device)
-            
+
             # Get the model prediction
             with torch.no_grad():
                 outputs = self.model(**inputs)
-            
+
             # Get predicted class and score
             logits = outputs.logits
             probabilities = torch.softmax(logits, dim=1)
-            
+
             # Get highest probability class
             predicted_class = torch.argmax(probabilities, dim=1).item()
             score = probabilities[0, predicted_class].item()
-            
+
             results.append({
                 "label": self.id2label[predicted_class],
                 "score": score
             })
-        
+
         return results
 
     def __del__(self):
         """Clear model and tokenizer to free memory."""
         self.discord()
-        
+
 
 def analyze_sentiment(text: str) -> Dict[str, Any]:
     """Analyze sentiment of text.
-    
+
     Args:
         text: Text to analyze
-        
+
     Returns:
         Dictionary containing sentiment label and score
     """
@@ -85,10 +85,11 @@ def analyze_sentiment(text: str) -> Dict[str, Any]:
     if model_instance is None:
         model_instance = SentimentAnalysisModel()
         register_tool('sentiment_analysis', model_instance)
-    
+
     model_instance.preload()
     model_instance.load()
     sentiments = model_instance.predict([text])
+    model_instance.discord()
     return sentiments[0] if sentiments else {"label": "neutral", "score": 0.0}
 
 
@@ -100,7 +101,7 @@ if __name__ == "__main__":
         "there are doubts about our finances",
         "profits are flat"
     ]
-    
+
     for text in texts:
         result = analyze_sentiment(text)
         print(f"Text: '{text}'")

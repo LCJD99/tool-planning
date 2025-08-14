@@ -29,34 +29,34 @@ class ObjectDetectionModel(BaseModel):
     @time_it(task_name="ObjectDetection_Predict")
     def predict(self, image_paths: List[str], threshold: float = None) -> List[List[Dict[str, Any]]]:
         """Detect objects in images.
-        
+
         Args:
             image_paths: List of image file paths
             threshold: Confidence threshold for detections (default: self.threshold)
-            
+
         Returns:
             List of lists containing object detections with label, score, and box coordinates
         """
         if threshold is None:
             threshold = self.threshold
-            
+
         results = []
         for image_path in image_paths:
             image = Image.open(image_path)
-            
+
             inputs = self.processor(images=image, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
+
             outputs = self.model(**inputs)
-            
+
             # Post-process to get detections above threshold
             target_sizes = torch.tensor([image.size[::-1]])
             detections = self.processor.post_process_object_detection(
-                outputs, 
-                target_sizes=target_sizes, 
+                outputs,
+                target_sizes=target_sizes,
                 threshold=threshold
             )[0]
-            
+
             image_detections = []
             for score, label, box in zip(detections["scores"], detections["labels"], detections["boxes"]):
                 image_detections.append({
@@ -64,23 +64,23 @@ class ObjectDetectionModel(BaseModel):
                     "score": score.item(),
                     "box": [round(i, 2) for i in box.tolist()]
                 })
-            
+
             results.append(image_detections)
-        
+
         return results
 
     def __del__(self):
         """Clear model and processor to free memory."""
         self.discord()
-        
+
 
 def detect_objects(image_path: str, threshold: float = 0.9) -> List[Dict[str, Any]]:
     """Detect objects in an image.
-    
+
     Args:
         image_path: Path to the image file
         threshold: Confidence threshold for detections (default: 0.9)
-        
+
     Returns:
         List of dictionaries with detected objects (label, score, box)
     """
@@ -89,10 +89,11 @@ def detect_objects(image_path: str, threshold: float = 0.9) -> List[Dict[str, An
     if model_instance is None:
         model_instance = ObjectDetectionModel()
         register_tool('object_detection', model_instance)
-    
+
     model_instance.preload()
     model_instance.load()
     detections = model_instance.predict([image_path], threshold)
+    model_instance.discord()
     return detections[0] if detections else []
 
 

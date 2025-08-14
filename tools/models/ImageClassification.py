@@ -28,10 +28,10 @@ class ImageClassificationModel(BaseModel):
     @time_it(task_name="ImageClassification_Predict")
     def predict(self, image_paths: List[str]) -> List[List[Dict[str, Any]]]:
         """Classify images into predefined categories.
-        
+
         Args:
             image_paths: List of image file paths
-            
+
         Returns:
             List of lists containing top-k class predictions with label and score
         """
@@ -40,16 +40,16 @@ class ImageClassificationModel(BaseModel):
             image = Image.open(image_path)
             if image.mode != "RGB":
                 image = image.convert(mode="RGB")
-                
+
             inputs = self.processor(images=image, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
+
             outputs = self.model(**inputs)
             logits = outputs.logits
-            
+
             # Get top-k predictions
             top_k_values, top_k_indices = torch.topk(logits, self.top_k, dim=1)
-            
+
             predictions = []
             for values, indices in zip(top_k_values, top_k_indices):
                 for value, idx in zip(values, indices):
@@ -57,22 +57,22 @@ class ImageClassificationModel(BaseModel):
                         "label": self.model.config.id2label[idx.item()],
                         "score": value.item()
                     })
-            
+
             results.append(predictions)
-        
+
         return results
 
     def __del__(self):
         """Clear model and processor to free memory."""
         self.discord()
-        
+
 
 def image_classification(image_path: str) -> List[Dict[str, Any]]:
     """Classify an image into predefined categories.
-    
+
     Args:
         image_path: Path to the image file
-        
+
     Returns:
         List of dictionaries with label and score for top predictions
     """
@@ -81,10 +81,11 @@ def image_classification(image_path: str) -> List[Dict[str, Any]]:
     if model_instance is None:
         model_instance = ImageClassificationModel()
         register_tool('image_classification', model_instance)
-    
+
     model_instance.preload()
     model_instance.load()
     classifications = model_instance.predict([image_path])
+    model_instance.discord()
     return classifications[0] if classifications else []
 
 

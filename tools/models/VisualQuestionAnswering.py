@@ -45,6 +45,7 @@ class VisualQuestionAnsweringModel(BaseModel):
                 image = image.convert(mode="RGB")
 
             # Prepare inputs
+            breakpoint()
             inputs = self.processor(images=image, text=question, return_tensors="pt").to(self.device)
 
             # Generate answer
@@ -86,6 +87,7 @@ def answer_visual_question(image_path: str, question: str) -> str:
     model_instance.preload()
     model_instance.load()
     answers = model_instance.predict([image_path], [question])
+    model_instance.discord()
     return answers[0] if answers else ""
 
 
