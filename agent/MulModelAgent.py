@@ -27,7 +27,7 @@ class MulModelAgent:
     4. Managing multi-turn conversation with the LLM
     """
 
-    def __init__(self, model_name: str = "./qwen2.5", url: str = "http://localhost:8000/v1",temperature: float = 0.0):
+    def __init__(self, model: str = "./qwen2.5", api_key: str = "fake api", base_url: str = "http://localhost:8000/v1",temperature: float = 0.0):
         """
         Initialize the Multi-Model Agent.
 
@@ -35,7 +35,7 @@ class MulModelAgent:
             model_name: The name of the LLM to use
             temperature: Sampling temperature for LLM generation
         """
-        self.llm = ChatOpenAI(model=model_name, base_url= url, temperature=temperature, api_key="fake_key")
+        self.llm = ChatOpenAI(model=model, base_url= base_url, temperature=temperature, api_key=api_key)
         # self.llm = ChatOpenAI(model="qwen-plus", api_key=os.getenv("DASHSCOPE_API_KEY"),base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",)
         self.messages = []  # Conversation history
 
@@ -94,7 +94,14 @@ class MulModelAgent:
             logging.error(error_msg)
             return {"error": error_msg}
 
-    def process(self, prompt: str, max_iterations: int = 10) -> str:
+    def process(self, prompt: str, max_iterations: int = 10, is_cot: bool = True) -> str:
+        if not is_cot:
+            prompt = f"{prompt}, plan all tool should use in only one iteraion"
+        
+        if is_cot:
+            return self._cot_process(prompt, max_iterations)
+
+    def _cot_process(self, prompt: str, max_iterations: int = 10) -> str:
         """
         Process a prompt through the agent, potentially invoking tools.
 
@@ -105,6 +112,7 @@ class MulModelAgent:
         Returns:
             The final response after all tool executions
         """
+
 
         # Start with the user's prompt
         self.messages = [HumanMessage(content=prompt)]
@@ -123,6 +131,7 @@ class MulModelAgent:
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
 
+            breakpoint()
             # Process tool calls
             has_tool_execution_error = False
             for tool_call in ai_msg.tool_calls:
