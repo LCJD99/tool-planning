@@ -17,10 +17,9 @@ from agent.MulModelAgent import MulModelAgent
 from logger.config import setup_logger
 import logging
 from benchmark.general_dataset import GeneralDataset
+from monitor import *
 
 _N = 1
-
-
 
 def run_zero_gpt():
     """
@@ -129,4 +128,9 @@ def run_zero_gpt():
 
 if __name__ == '__main__':
     setup_logger(log_level = logging.INFO)
+
+    cpu_monitor_thread, cpu_stop_event = start_cpu_monitoring()
+    gpu_monitor_thread, gpu_stop_event = start_gpu_monitoring()
     run_zero_gpt()
+    stop_cpu_monitoring(cpu_monitor_thread, cpu_stop_event)
+    stop_gpu_monitoring(gpu_monitor_thread, gpu_stop_event)
