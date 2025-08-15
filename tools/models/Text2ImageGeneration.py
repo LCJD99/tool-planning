@@ -7,6 +7,7 @@ import os
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+from diffusers import StableDiffusionPipeline
 
 
 class Text2ImageGenerationModel(BaseModel):
@@ -27,7 +28,7 @@ class Text2ImageGenerationModel(BaseModel):
 
     @time_it(task_name="Text2ImageGeneration_Load")
     def load(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
         # Use float16 precision if on CUDA
         dtype = torch.float16 if self.device.type == "cuda" else torch.float32
 
@@ -94,11 +95,11 @@ class Text2ImageGenerationModel(BaseModel):
 
 
 def generate_image_from_text(prompt: str,
+                             output_path: str ,
                            num_inference_steps: int = 50,
                            guidance_scale: float = 7.5,
                            height: int = 512,
-                           width: int = 512,
-                           output_path: Optional[str] = None) -> Image.Image:
+                           width: int = 512) -> str:
     """Generate image from text prompt.
 
     Args:
@@ -107,7 +108,7 @@ def generate_image_from_text(prompt: str,
         guidance_scale: Scale for classifier-free guidance (default: 7.5)
         height: Height of generated image (default: 512)
         width: Width of generated image (default: 512)
-        output_path: Optional path to save the generated image
+        output_path: path to save the generated image
 
     Returns:
         Generated PIL image
@@ -129,13 +130,13 @@ def generate_image_from_text(prompt: str,
     model_instance.discord()
 
     image = images[0] if images else None
+# Save the image if output path is provided
 
-    # Save the image if output path is provided
     if image and output_path:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         image.save(output_path)
 
-    return image
+    return output_path
 
 
 if __name__ == "__main__":

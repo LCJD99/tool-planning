@@ -12,5 +12,6 @@ tools = [
     tool(analyze_sentiment, description="Analyze sentiment of text"),
     tool(summarize_text, description="Summarize long texts"),
     tool(generate_image_from_text, description="Generate images from text descriptions"),
-    tool(answer_visual_question, description="Answer questions about images")
+    tool(answer_visual_question, description="Answer questions about images"),
+    tool(image_colorization, description="colorized the image")
 ]

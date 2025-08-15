@@ -19,6 +19,7 @@ import logging
 from benchmark.general_dataset import GeneralDataset
 from monitor import *
 
+
 _N = 1
 
 def run_zero_gpt():
@@ -34,8 +35,8 @@ def run_zero_gpt():
     print("Begin loading datasets...")
     task_discriptions = txt_loader(data_path+"task_description.txt")
     # task_idx = [0,21,61,105,110,120,10,35,62,107,115]
-    # test_task_idx = [2,3,10,15,20,35,45,55,65,70,70,90,106,107]
-    test_task_idx = [20]
+    # test_task_idx = [2,3,10,15,20,35,45,55,65,70,90,106,107]
+    test_task_idx = [2]
     # test_dataloaders = []
     # for i in test_task_idx:
     #     dataset = GeneralDataset(i, data_path)
@@ -79,15 +80,19 @@ def run_zero_gpt():
         task_index = test_task_idx[i]
         task_rewards = []
         dataset = GeneralDataset(str(task_index), data_path)
+        logging.info(f"=== start task {task_index} ===")
 
         for j in range(_N):
             batch = dataset[j]
             if batch['input']['text'] is not None:
                 prompt = f"{prompt}, text: {batch['input']['text'][j]}"
             if batch['input']['image'] is not None:
-                prompt = f"{prompt}, picture path: {batch['input']['image'][j]}, if picture is not good, first resolution it"
+                prompt = f"{prompt}, picture path: {batch['input']['image'][j]}, if picture is gray, colorized it"
             if task_index <= 14:
-                prompt = f"{prompt}, onle return new picture path in '{{}}' easy for me to parse"
+                prompt = f"{prompt}, onle return new picture path in " ",  easy for me to parse"
+            if 105 <= task_index <= 106:
+                prompt = f"{prompt}, generated picture path /tmp/img.png"
+
             else:
                 prompt = f"{prompt}, give me last tool output only"
             logging.info(f"prompt: {prompt}")
@@ -107,7 +112,9 @@ def run_zero_gpt():
                 f1 = np.mean(txt_eval(predictions, [output], bertscore, device=eval_device))
                 task_rewards.append(f1)
             else:
-                score = clip_score(predictions, inputs)
+                img = Image.open('/tmp/img.png')
+                vec = img2vec(img)
+                score = clip_score(vec, batch['input']['text'][j])
                 task_rewards.append(score.detach()/100)
 
         ave_task_reward = np.mean(task_rewards)
@@ -124,13 +131,22 @@ def run_zero_gpt():
 
     print("Finished testing!")
 
-    print("Evaluation results: ", np.mean(clips), np.mean(berts), np.mean(similairies), np.mean(rewards))
+    logging.info(f"Evaluation results: clips: {np.mean(clips)}, berts: {np.mean(berts)}, image: {np.mean(similairies)}, all: {np.mean(rewards)}")
+
+def with_monitor():
+    try:
+        cpu_monitor_thread, cpu_stop_event = start_cpu_monitoring()
+        gpu_monitor_thread, gpu_stop_event = start_gpu_monitoring()
+        run_zero_gpt()
+    finally:
+        stop_cpu_monitoring(cpu_monitor_thread, cpu_stop_event)
+        stop_gpu_monitoring(gpu_monitor_thread, gpu_stop_event)
+
+
+def without_monitor():
+    run_zero_gpt()
 
 if __name__ == '__main__':
     setup_logger(log_level = logging.INFO)
-
-    cpu_monitor_thread, cpu_stop_event = start_cpu_monitoring()
-    gpu_monitor_thread, gpu_stop_event = start_gpu_monitoring()
-    run_zero_gpt()
-    stop_cpu_monitoring(cpu_monitor_thread, cpu_stop_event)
-    stop_gpu_monitoring(gpu_monitor_thread, gpu_stop_event)
+    without_monitor()
+    # with_monitor()

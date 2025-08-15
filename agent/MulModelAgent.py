@@ -97,9 +97,8 @@ class MulModelAgent:
     def process(self, prompt: str, max_iterations: int = 10, is_cot: bool = True) -> str:
         if not is_cot:
             prompt = f"{prompt}, plan all tool should use in only one iteraion"
-        
-        if is_cot:
-            return self._cot_process(prompt, max_iterations)
+
+        return self._cot_process(prompt, max_iterations)
 
     def _cot_process(self, prompt: str, max_iterations: int = 10) -> str:
         """
@@ -131,7 +130,6 @@ class MulModelAgent:
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
 
-            breakpoint()
             # Process tool calls
             has_tool_execution_error = False
             for tool_call in ai_msg.tool_calls:

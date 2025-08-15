@@ -9,6 +9,7 @@ from .SentimentAnalysis import analyze_sentiment
 from .TextSummarization import summarize_text
 from .Text2ImageGeneration import generate_image_from_text
 from .VisualQuestionAnswering import answer_visual_question
+from .Colorization import image_colorization
 
 __all__ = [
     "image_captioning",
@@ -22,4 +23,5 @@ __all__ = [
     "summarize_text",
     "generate_image_from_text",
     "answer_visual_question",
+    "image_colorization",
 ]

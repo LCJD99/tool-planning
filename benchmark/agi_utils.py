@@ -4,14 +4,13 @@ import torch
 from sentence_transformers import SentenceTransformer, util
 from PIL import Image
 import re
+from torchvision import transforms
+from sklearn.metrics.pairwise import cosine_similarity
 
 def text2picpath(text: str) -> str:
-    match = re.search(r'(/.*?\.jpg)', text)
-    if match:
-        path = match.group(1)
-        return path
-    else:
-        return ""
+    regex = r'(?:^|\s)(/[^ ]+\.jpg)'
+    match = re.findall(regex , text)
+    return match[0]
 
 def txt_eval(predictions, references, bertscore, device="cuda"):
     score = bertscore.compute(
@@ -33,16 +32,24 @@ def txt_loader(path):
     f.close()
     return text
 
+def path2PIL(paths):
+    imgs = []
+    img = Image.open(paths[0])
+    img = img.convert("RGB")
+    imgs.append(img)
+    return imgs
+
+def img2vec(img):
+    img_transform = transforms.Compose([ transforms.Resize(256),
+                                        transforms.CenterCrop(256),
+                                        transforms.PILToTensor(),
+                                        ])
+    emb = img_transform(img)
+    return emb
+
+
 
 def image_similarity(im_path1, im_path2, model, extractor):
-
-    def path2PIL(paths):
-        imgs = []
-        img = Image.open(paths[0])
-        img = img.convert("RGB")
-        imgs.append(img)
-        return imgs
-
     im1 = path2PIL(im_path1)
     im2 = path2PIL(im_path2)
 
@@ -56,10 +63,16 @@ def image_similarity(im_path1, im_path2, model, extractor):
         emb1 = model(img1.pixel_values)[0].squeeze().numpy()
         emb2 = model(img2.pixel_values)[0].squeeze().numpy()
 
-    # Compute the cosine similarity between the embeddings
+    if emb1.ndim == 1:
+        emb1 = emb1.reshape(1, -1)
+    if emb2.ndim == 1:
+        emb2 = emb2.reshape(1, -1)
 
-    dist = np.mean(np.array([np.linalg.norm(emb1[i] - emb2[i]) for i in range(batch_size)]))
-    return dist
+    sims = np.diag(cosine_similarity(emb1, emb2))
+
+    avg_similarity = np.mean(sims)
+
+    return avg_similarity
 
 def module_seq_filter(module_seq, task_id):
     io_dict = {
