@@ -38,7 +38,7 @@ def start_cpu_monitoring(interval=0.1, output_file='cpu_memory_record.csv', stop
     def monitoring_worker():
         # Initialize the CSV file with headers
         with open(output_file, 'w') as f:
-            f.write("timestamp,sys_physical_mem_total_mb,sys_physical_mem_used_mb,proc_physical_mem_mb\n")
+            f.write("timestamp,sys_physical_mem_total_mb,sys_physical_mem_used_mb,proc_physical_mem_mb,cpu_percent,proc_cpu_percent\n")
             
         logging.info(f"Starting continuous process monitoring (interval: {interval}s)")
         
@@ -53,11 +53,15 @@ def start_cpu_monitoring(interval=0.1, output_file='cpu_memory_record.csv', stop
                 sys_physical_mem_total_mb = sys_physical_memory.total / (1024**2)
                 sys_physical_mem_used_mb = sys_physical_memory.used / (1024**2)
                 
+                # Get CPU usage percentages
+                cpu_percent = psutil.cpu_percent(interval=None)  # Overall system CPU usage
+                proc_cpu_percent = current_process.cpu_percent(interval=None)  # Process CPU usage
+                
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 
                 # Write to file
                 with open(output_file, 'a') as f:
-                    f.write(f"{timestamp},{sys_physical_mem_total_mb:.2f},{sys_physical_mem_used_mb:.2f},{proc_physical_mem_mb:.2f}\n")
+                    f.write(f"{timestamp},{sys_physical_mem_total_mb:.2f},{sys_physical_mem_used_mb:.2f},{proc_physical_mem_mb:.2f},{cpu_percent:.2f},{proc_cpu_percent:.2f}\n")
                 
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
                 logging.error(f"Error monitoring process: {str(e)}")

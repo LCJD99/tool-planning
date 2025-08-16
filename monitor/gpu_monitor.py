@@ -1,6 +1,7 @@
 import pynvml
 import torch
 import logging
+import GPUtil
 
 handle = None
 
@@ -40,17 +41,34 @@ def start_gpu_monitoring(interval=0.1, output_file='gpu_memory_record.csv', stop
 
     def monitoring_worker():
         with open(output_file, 'w') as f:
-            f.write("timestamp,used_memory_mb,allocated_memory_mb,reserved_memory_mb\n")
+            f.write("timestamp,used_memory_mb,allocated_memory_mb,reserved_memory_mb,gpu_utilization_percent\n")
 
         start_time = time.time()
         logging.info(f"Starting GPU memory monitoring (interval: {interval}s)")
 
         while not stop_event.is_set():
+            # Get memory usage
             if handle:
                 mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 used_mem = mem_info.used / 1024**2
+                # Get GPU utilization
+                try:
+                    utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                    gpu_utilization = utilization.gpu  # GPU utilization percentage
+                except Exception as e:
+                    logging.error(f"Failed to get GPU utilization: {e}")
+                    gpu_utilization = 0
             else:
                 used_mem = 0
+                gpu_utilization = 0
+                
+                # Try using GPUtil as an alternative
+                try:
+                    gpus = GPUtil.getGPUs()
+                    if gpus:
+                        gpu_utilization = gpus[0].load * 100  # Convert to percentage
+                except Exception as e:
+                    logging.error(f"Failed to get GPU utilization via GPUtil: {e}")
 
             allocated_mem = torch.cuda.memory_allocated(0) / 1024**2
             reserved_mem = torch.cuda.memory_reserved(0) / 1024**2
@@ -58,7 +76,7 @@ def start_gpu_monitoring(interval=0.1, output_file='gpu_memory_record.csv', stop
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
             with open(output_file, 'a') as f:
-                f.write(f"{timestamp},{used_mem:.2f},{allocated_mem:.2f},{reserved_mem:.2f}\n")
+                f.write(f"{timestamp},{used_mem:.2f},{allocated_mem:.2f},{reserved_mem:.2f},{gpu_utilization:.2f}\n")
 
             time.sleep(interval)
 
@@ -82,7 +100,14 @@ def stop_gpu_monitoring(monitor_thread, stop_event):
         logging.info("GPU memory monitoring thread joined")
 
 def cleanup():
+    """
+    Clean up NVML resources when monitoring is no longer needed
+    """
     global handle
     if handle:
-        pynvml.nvmlShutdown()
-        logging.info("pynvml shut down.")
+        try:
+            pynvml.nvmlShutdown()
+            logging.info("pynvml shut down.")
+        except Exception as e:
+            logging.error(f"Error shutting down pynvml: {e}")
+    handle = None
