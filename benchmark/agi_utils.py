@@ -8,9 +8,12 @@ from torchvision import transforms
 from sklearn.metrics.pairwise import cosine_similarity
 
 def text2picpath(text: str) -> str:
-    regex = r'(?:^|\s)(/[^ ]+\.jpg)'
-    match = re.findall(regex , text)
-    return match[0]
+    regex = r'([\'"]?)(/tmp/[^\'"]+\.(?:jpg|png))\1'
+    match = re.search(regex , text)
+    if match:
+        return match.group(2)
+    else:
+        return ""
 
 def txt_eval(predictions, references, bertscore, device="cuda"):
     score = bertscore.compute(
