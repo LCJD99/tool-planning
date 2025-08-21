@@ -5,7 +5,6 @@ import numpy as np
 from PIL import Image
 from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 import logging
 
@@ -80,6 +79,7 @@ def image_super_resolution(image_path: str, output_path: str ) -> str:
         Enhanced image path
     """
     # Get from registry or create and register if not exists
+    from agent.registry import register_tool, get_tool
     model_instance = get_tool('image_super_resolution')
     if model_instance is None:
         model_instance = ImageSuperResolutionModel()
@@ -90,7 +90,6 @@ def image_super_resolution(image_path: str, output_path: str ) -> str:
     # If output_path is provided, pass it to predict method
     output_paths = [output_path] if output_path is not None else None
     enhanced_images = model_instance.predict([image_path], output_paths)
-    model_instance.discord()
 
     # Return the enhanced image array
     if enhanced_images:

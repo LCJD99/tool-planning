@@ -3,7 +3,6 @@ from transformers import AutoModelForQuestionAnswering, AutoTokenizer
 import torch
 from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 import logging
 
@@ -91,6 +90,7 @@ def question_answering(question: str, context: str) -> Dict[str, Any]:
         Dictionary containing answer text and confidence score
     """
     # Get from registry or create and register if not exists
+    from agent.registry import register_tool, get_tool
     model_instance = get_tool('question_answering')
     if model_instance is None:
         logging.error("Question answering model not found in registry.")

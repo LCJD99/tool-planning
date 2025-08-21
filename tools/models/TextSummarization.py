@@ -3,7 +3,6 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import torch
 from typing import List, Dict, Any, Optional
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 import logging
 
@@ -94,6 +93,7 @@ def text_summarization(text: str,
         Generated summary
     """
     # Get from registry or create and register if not exists
+    from agent.registry import register_tool, get_tool
     model_instance = get_tool('text_summarization')
     if model_instance is None:
         logging.error("Text summarization model not found in registry.")

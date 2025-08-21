@@ -6,7 +6,6 @@ from PIL import Image
 import os
 import logging
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 from diffusers import StableDiffusionPipeline
 
@@ -95,7 +94,7 @@ class Text2ImageGenerationModel(BaseModel):
         self.discord()
 
 
-def text2image_genenration(prompt: str,
+def text2image_generation(prompt: str,
                              output_path: str,
                            num_inference_steps: int = 50,
                            guidance_scale: float = 7.5,
@@ -115,6 +114,7 @@ def text2image_genenration(prompt: str,
         Path to the saved image or empty string if failed
     """
     # Get from registry or create and register if not exists
+    from agent.registry import register_tool, get_tool
     model_instance = get_tool('text2image_generation')
     if model_instance is None:
         logging.error("Text to image generation model not found in registry.")
@@ -134,7 +134,7 @@ def text2image_genenration(prompt: str,
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         image.save(output_path)
         return output_path
-    
+
     return ""
 
 

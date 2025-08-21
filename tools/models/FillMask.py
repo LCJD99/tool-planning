@@ -3,7 +3,6 @@ from transformers import AutoModelForMaskedLM, AutoTokenizer
 import torch
 from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 import logging
 
@@ -80,6 +79,7 @@ def fill_mask(text: str) -> List[Dict[str, Any]]:
         List of dictionaries with token and score for the masked position
     """
     # Get from registry or create and register if not exists
+    from agent.registry import register_tool, get_tool
     model_instance = get_tool('fill_mask')
     if model_instance is None:
         logging.error("Fill mask model not found in registry.")

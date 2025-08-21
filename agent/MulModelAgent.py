@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 from agent.Tools import tools
 from utils.utils import create_function_name_map
 from scheduler.SerialAliveScheduler import SerialAliveScheduler
-from tools.models import MODEL_MAP
+from tools.model_map import MODEL_MAP
 from agent.registry import tool_registry
 import os
 
@@ -121,7 +121,7 @@ class MulModelAgent:
 
         scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map)
         # TODO: manual preload tools
-        scheduler.manual_preload([tool.name for tool in self.tools])
+        scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation'])
 
         for iteration in range(max_iterations):
             # Get LLM response
@@ -133,7 +133,7 @@ class MulModelAgent:
 
             # Check for tool calls
             if not ai_msg.tool_calls:
-                # TODO: Swap here 
+                # TODO: Swap here
                 tool_registry.swap()
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
@@ -144,7 +144,7 @@ class MulModelAgent:
             scheduler.add_tasks(iteration, ai_msg.tool_calls)
             tool_messages = scheduler.execute(iteration)
             self.messages.extend(tool_messages)
-            
+
             if has_tool_execution_error:
                 logging.warning("Encountered error during tool execution")
                 # Optionally add special handling here

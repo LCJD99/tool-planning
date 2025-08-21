@@ -11,7 +11,7 @@ tools = [
     tool(question_answering, description="Answer questions based on provided context"),
     tool(sentiment_analysis, description="Analyze sentiment of text"),
     tool(text_summarization, description="Summarize long texts"),
-    tool(text2image_genenration, description="Generate images from text descriptions"),
+    tool(text2image_generation, description="Generate images from text descriptions"),
     tool(visual_question_answering, description="Answer questions about images"),
     # tool(image_colorization, description="colorized the image")
 ]

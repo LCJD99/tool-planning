@@ -3,7 +3,6 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import torch
 from typing import List
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 import logging
 
@@ -75,6 +74,7 @@ def machine_translation(text: str, source_lang: str = "English", target_lang: st
         Translated text
     """
     # Get from registry or create and register if not exists
+    from agent.registry import register_tool, get_tool
     model_instance = get_tool('machine_translation')
     if model_instance is None:
         logging.error("Machine translation model not found in registry.")

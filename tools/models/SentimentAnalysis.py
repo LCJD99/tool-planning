@@ -3,7 +3,6 @@ from transformers import BertTokenizer, BertForSequenceClassification
 import torch
 from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 import logging
 
@@ -82,6 +81,7 @@ def sentiment_analysis(text: str) -> Dict[str, Any]:
         Dictionary containing sentiment label and score
     """
     # Get from registry or create and register if not exists
+    from agent.registry import register_tool, get_tool
     model_instance = get_tool('sentiment_analysis')
     if model_instance is None:
         logging.error("Sentiment analysis model not found in registry.")

@@ -4,12 +4,11 @@ Tool Registry module for managing and accessing tool instances.
 This module provides a centralized registry for all tool model instances,
 allowing easy access, management, and memory optimization of AI tool models.
 """
-
 from typing import Dict, Any, Optional, Type
 import logging
 from tools.models.BaseModel import BaseModel
 from enum import Enum
-from tools.models import MODEL_MAP
+from tools.model_map import MODEL_MAP
 
 class ModelWeightState(Enum):
     DISK = 0
@@ -43,9 +42,9 @@ class ToolRegistry:
         if tool_name in self._tools:
             logging.warning(f"Tool '{tool_name}' already registered. Overwriting.")
         self._tools[tool_name] = tool_instance
-        self._state[tool_name] = ModelWeightState.DISK  
+        self._state[tool_name] = ModelWeightState.DISK
         logging.info(f"Tool '{tool_name}' registered successfully.")
-    
+
     def register_model_map(self, model_map: Dict[str, BaseModel]) -> None:
         """
         Register a map of tool instances with the registry.
@@ -93,7 +92,7 @@ class ToolRegistry:
             Dictionary with tool names as keys and tool instances as values
         """
         return {k: v for k, v in self._tools.items()}
-    
+
     def preload(self, tool_name: Optional[str] = None) -> None:
         """
         Preload tool instances into memory.
@@ -106,15 +105,20 @@ class ToolRegistry:
                     tool.preload()
                     self._state[name] = ModelWeightState.CPU
                     logging.info(f"Tool '{name}' preloaded into memory.")
-        elif tool_name in self._tools:
+        else:
+            if tool_name not in self._tools:
+                self.register(tool_name, MODEL_MAP[tool_name]())
+
             tool = self._tools[tool_name]
             if hasattr(tool, 'preload') and callable(tool.preload):
                 tool.preload()
                 self._state[tool_name] = ModelWeightState.CPU
                 logging.info(f"Tool '{tool_name}' preloaded into memory.")
-        else:
-            logging.warning(f"Tool '{tool_name}' not found in registry.")
-    
+            else:
+                logging.error(f"Tool '{tool_name}' no implement preload method.")
+
+
+
     def load(self, tool_name: Optional[str] = None) -> None:
         """
         Load tool instances into gpu memory.

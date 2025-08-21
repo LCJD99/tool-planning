@@ -4,7 +4,6 @@ import torch
 from PIL import Image
 from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
-from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
 import logging
 
@@ -77,6 +76,7 @@ def image_classification(image_path: str) -> List[Dict[str, Any]]:
     Returns:
         List of dictionaries with label and score for top predictions
     """
+    from agent.registry import register_tool, get_tool
     # Get from registry or create and register if not exists
     model_instance = get_tool('image_classification')
     if model_instance is None:
