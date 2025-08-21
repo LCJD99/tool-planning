@@ -18,9 +18,45 @@ from logger.config import setup_logger
 import logging
 from benchmark.general_dataset import GeneralDataset
 from monitor import *
+from typing import List, Any
 
 
 _N = 1
+
+class OpenAGI():
+    def __init__(self, data_path: str, task_set: List[Any], eval_device: str = "cuda", batch_size: int = 1):
+        self.data_path = data_path
+        self.eval_device = eval_device
+        self.batch_size = batch_size
+        self.task_descriptions = txt_loader(os.path.join(data_path, "task_description.txt"))
+        self.test_task_idx = task_set
+    
+    def get_task_prompt_from_index(self, task_index: int) -> str:
+        prompt = self.task_discriptions[task_index].strip()
+        dataset = GeneralDataset(str(task_index), self.data_path)
+        logging.info(f"=== start task {task_index} ===")
+
+        j = random.randint(0, self.batch_size - 1)
+        batch = dataset[j]
+
+        if batch['input']['text'] is not None:
+            prompt = f"{prompt}, text: {batch['input']['text'][j]}"
+
+        if batch['input']['image'] is not None:
+            prompt = f"{prompt}, picture path: {batch['input']['image'][j]}, if is low quality, you should use super resolution generate intermediate image path: /tmp/xxx.jpg(xxx is a random id name)"
+
+        if task_index <= 14:
+            prompt = f"{prompt}, onle return new picture path in " ",  easy for me to parse"
+
+        if 105 <= task_index <= 106:
+            prompt = f"{prompt}, generated picture path /tmp/img.jpg"
+        else:
+            prompt = f"{prompt}, give me last tool output only"
+        
+        logging.info(f"prompt: {prompt}")
+        return prompt
+
+
 
 def run_zero_gpt():
     """
