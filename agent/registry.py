@@ -8,6 +8,13 @@ allowing easy access, management, and memory optimization of AI tool models.
 from typing import Dict, Any, Optional, Type
 import logging
 from tools.models.BaseModel import BaseModel
+from enum import Enum
+from tools.models import MODEL_MAP
+
+class ModelWeightState(Enum):
+    DISK = 0
+    CPU = 1
+    GPU = 2
 
 class ToolRegistry:
     """
@@ -22,6 +29,7 @@ class ToolRegistry:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._tools = {}
+            cls._instance._state= {}
         return cls._instance
 
     def register(self, tool_name: str, tool_instance: BaseModel) -> None:
@@ -35,7 +43,19 @@ class ToolRegistry:
         if tool_name in self._tools:
             logging.warning(f"Tool '{tool_name}' already registered. Overwriting.")
         self._tools[tool_name] = tool_instance
+        self._state[tool_name] = ModelWeightState.DISK  
         logging.info(f"Tool '{tool_name}' registered successfully.")
+    
+    def register_model_map(self, model_map: Dict[str, BaseModel]) -> None:
+        """
+        Register a map of tool instances with the registry.
+
+        Args:
+            model_map: A dictionary mapping tool names to their instances
+        """
+        for tool_name, tool_instance in model_map.items():
+            self.register(tool_name, tool_instance)
+        logging.info(f"Registered {len(model_map)} tools from model map.")
 
     def get(self, tool_name: str) -> Optional[BaseModel]:
         """
@@ -73,8 +93,66 @@ class ToolRegistry:
             Dictionary with tool names as keys and tool instances as values
         """
         return {k: v for k, v in self._tools.items()}
+    
+    def preload(self, tool_name: Optional[str] = None) -> None:
+        """
+        Preload tool instances into memory.
+        Args:
+            tool_name: The name of the tool to preload, or None to preload all
+        """
+        if tool_name is None:
+            for name, tool in self._tools.items():
+                if hasattr(tool, 'preload') and callable(tool.preload) and self._state[name] == ModelWeightState.DISK:
+                    tool.preload()
+                    self._state[name] = ModelWeightState.CPU
+                    logging.info(f"Tool '{name}' preloaded into memory.")
+        elif tool_name in self._tools:
+            tool = self._tools[tool_name]
+            if hasattr(tool, 'preload') and callable(tool.preload):
+                tool.preload()
+                self._state[tool_name] = ModelWeightState.CPU
+                logging.info(f"Tool '{tool_name}' preloaded into memory.")
+        else:
+            logging.warning(f"Tool '{tool_name}' not found in registry.")
+    
+    def load(self, tool_name: Optional[str] = None) -> None:
+        """
+        Load tool instances into gpu memory.
 
-    def clear(self, tool_name: Optional[str] = None) -> None:
+        Args:
+            tool_name: The name of the tool to load, or None to load all
+        """
+        if tool_name is None:
+            for name, tool in self._tools.items():
+                if hasattr(tool, 'load') and callable(tool.load) and self._state[name] == ModelWeightState.CPU:
+                    tool.load()
+                    self._state[name] = ModelWeightState.GPU
+                    logging.info(f"Tool '{name}' loaded into gpu memory.")
+        elif tool_name in self._tools and self._state[tool_name] == ModelWeightState.CPU:
+            tool = self._tools[tool_name]
+            if hasattr(tool, 'load') and callable(tool.load):
+                tool.load()
+                self._state[tool_name] = ModelWeightState.GPU
+                logging.info(f"Tool '{tool_name}' loaded into memory.")
+        else:
+            logging.warning(f"Tool '{tool_name}' not found in registry.")
+
+    def swap(self, tool_name: Optional[str] = None) -> None:
+        if tool_name is None:
+            for name, tool in list(self._tools.items()):
+                if hasattr(tool, 'swap') and callable(tool.swap) and self._state[name] == ModelWeightState.GPU:
+                    tool.swap()
+                    self._state[name] = ModelWeightState.CPU
+        elif tool_name in self._tools and self._state[tool_name] == ModelWeightState.GPU:
+            tool = self._tools[tool_name]
+            if hasattr(tool, 'swap') and callable(tool.swap):
+                tool.swap()
+                self._state[tool_name] = ModelWeightState.CPU
+            logging.info(f"Tool '{tool_name}' swap from registry.")
+        else:
+            logging.warning(f"Tool '{tool_name}' not found in registry.")
+
+    def discord(self, tool_name: Optional[str] = None) -> None:
         """
         Clear tool instances from the registry.
 
@@ -86,15 +164,15 @@ class ToolRegistry:
             for name, tool in list(self._tools.items()):
                 if hasattr(tool, 'discord') and callable(tool.discord):
                     tool.discord()
-            self._tools.clear()
-            logging.info("All tools cleared from registry.")
+                    self._state[name] = ModelWeightState.DISK
+            logging.info("All tools cleared from registry to disk.")
         elif tool_name in self._tools:
             # Clear specific tool
             tool = self._tools[tool_name]
             if hasattr(tool, 'discord') and callable(tool.discord):
                 tool.discord()
-            del self._tools[tool_name]
-            logging.info(f"Tool '{tool_name}' cleared from registry.")
+                self._state[tool_name] = ModelWeightState.DISK
+            logging.info(f"Tool '{tool_name}' cleared from registry to disk.")
         else:
             logging.warning(f"Tool '{tool_name}' not found in registry.")
 

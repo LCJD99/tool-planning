@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class ImageSuperResolutionModel(BaseModel):
@@ -82,10 +83,9 @@ def image_super_resolution(image_path: str, output_path: str ) -> str:
     model_instance = get_tool('image_super_resolution')
     if model_instance is None:
         model_instance = ImageSuperResolutionModel()
-        register_tool('image_super_resolution', model_instance)
+        logging.error("Image classification model not found in registry.")
+        return "Model not found"
 
-    model_instance.preload()
-    model_instance.load()
 
     # If output_path is provided, pass it to predict method
     output_paths = [output_path] if output_path is not None else None

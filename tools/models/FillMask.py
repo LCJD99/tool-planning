@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class FillMaskModel(BaseModel):
@@ -81,13 +82,10 @@ def fill_mask(text: str) -> List[Dict[str, Any]]:
     # Get from registry or create and register if not exists
     model_instance = get_tool('fill_mask')
     if model_instance is None:
-        model_instance = FillMaskModel()
-        register_tool('fill_mask', model_instance)
+        logging.error("Fill mask model not found in registry.")
+        return [{"token": "", "score": 0.0}]
 
-    model_instance.preload()
-    model_instance.load()
     predictions = model_instance.predict([text])
-    model_instance.discord()
     return predictions[0] if predictions else [{"token": "", "score": 0.0}]
 
 

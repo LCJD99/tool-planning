@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class ImageClassificationModel(BaseModel):
@@ -79,13 +80,10 @@ def image_classification(image_path: str) -> List[Dict[str, Any]]:
     # Get from registry or create and register if not exists
     model_instance = get_tool('image_classification')
     if model_instance is None:
-        model_instance = ImageClassificationModel()
-        register_tool('image_classification', model_instance)
+        logging.error("Image classification model not found in registry.")
+        return []
 
-    model_instance.preload()
-    model_instance.load()
     classifications = model_instance.predict([image_path])
-    model_instance.discord()
     return classifications[0] if classifications else []
 
 

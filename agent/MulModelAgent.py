@@ -13,6 +13,9 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
 from agent.Tools import tools
 from utils.utils import create_function_name_map
+from scheduler.SerialAliveScheduler import SerialAliveScheduler
+from tools.models import MODEL_MAP
+from agent.registry import tool_registry
 import os
 
 
@@ -116,6 +119,10 @@ class MulModelAgent:
         # Start with the user's prompt
         self.messages = [HumanMessage(content=prompt)]
 
+        scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map)
+        # TODO: manual preload tools
+        scheduler.manual_preload([tool.name for tool in self.tools])
+
         for iteration in range(max_iterations):
             # Get LLM response
             ai_msg = self.llm_with_tools.invoke(self.messages)
@@ -126,33 +133,18 @@ class MulModelAgent:
 
             # Check for tool calls
             if not ai_msg.tool_calls:
-                # LLM provided a direct answer without tool calls
+                # TODO: Swap here 
+                tool_registry.swap()
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
 
             # Process tool calls
             has_tool_execution_error = False
-            for tool_call in ai_msg.tool_calls:
-                tool_name = tool_call['name']
-                tool_args = tool_call['args']
-                call_id = tool_call['id']
 
-                logging.info(f"Executing tool: {tool_name} with args: {tool_args}")
-
-                # Execute the tool
-                tool_result = self._execute_tool(tool_name, tool_args)
-
-                # Check if there was an error in tool execution
-                if isinstance(tool_result, dict) and "error" in tool_result:
-                    has_tool_execution_error = True
-
-                # Add the tool result to the conversation
-                tool_message = ToolMessage(
-                    content=str(tool_result),
-                    tool_call_id=call_id
-                )
-                self.messages.append(tool_message)
-
+            scheduler.add_tasks(iteration, ai_msg.tool_calls)
+            tool_messages = scheduler.execute(iteration)
+            self.messages.extend(tool_messages)
+            
             if has_tool_execution_error:
                 logging.warning("Encountered error during tool execution")
                 # Optionally add special handling here

@@ -5,6 +5,7 @@ from typing import List
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class MachineTranslationModel(BaseModel):
@@ -62,7 +63,7 @@ class MachineTranslationModel(BaseModel):
         self.discord()
 
 
-def translate_text(text: str, source_lang: str = "English", target_lang: str = "French") -> str:
+def machine_translation(text: str, source_lang: str = "English", target_lang: str = "French") -> str:
     """Translate text between languages.
 
     Args:
@@ -76,19 +77,16 @@ def translate_text(text: str, source_lang: str = "English", target_lang: str = "
     # Get from registry or create and register if not exists
     model_instance = get_tool('machine_translation')
     if model_instance is None:
-        model_instance = MachineTranslationModel()
-        register_tool('machine_translation', model_instance)
+        logging.error("Machine translation model not found in registry.")
+        return ""
 
-    model_instance.preload()
-    model_instance.load()
     translations = model_instance.predict([text], source_lang, target_lang)
-    model_instance.discord()
     return translations[0] if translations else ""
 
 
 if __name__ == "__main__":
     # Example usage
     text = "The weather is nice today."
-    translated_text = translate_text(text, "English", "French")
+    translated_text = machine_translation(text, "English", "French")
     print(f"Original: {text}")
     print(f"Translation: {translated_text}")

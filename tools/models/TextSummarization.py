@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class TextSummarizationModel(BaseModel):
@@ -77,7 +78,7 @@ class TextSummarizationModel(BaseModel):
         self.discord()
 
 
-def summarize_text(text: str,
+def text_summarization(text: str,
                   max_length: int = 130,
                   min_length: int = 30,
                   do_sample: bool = False) -> str:
@@ -95,18 +96,15 @@ def summarize_text(text: str,
     # Get from registry or create and register if not exists
     model_instance = get_tool('text_summarization')
     if model_instance is None:
-        model_instance = TextSummarizationModel()
-        register_tool('text_summarization', model_instance)
+        logging.error("Text summarization model not found in registry.")
+        return ""
 
-    model_instance.preload()
-    model_instance.load()
     summaries = model_instance.predict(
         [text],
         max_length=max_length,
         min_length=min_length,
         do_sample=do_sample
     )
-    model_instance.discord()
     return summaries[0] if summaries else ""
 
 
@@ -120,7 +118,7 @@ if __name__ == "__main__":
     2010 marriage license application, according to court documents.
     Prosecutors said the marriages were part of an immigration scam.
     """
-    summary = summarize_text(article)
+    summary = text_summarization(article)
     print(f"Original article length: {len(article)} characters")
     print(f"Summary length: {len(summary)} characters")
     print(f"Summary: {summary}")

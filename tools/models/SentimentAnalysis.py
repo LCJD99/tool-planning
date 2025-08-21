@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class SentimentAnalysisModel(BaseModel):
@@ -71,7 +72,7 @@ class SentimentAnalysisModel(BaseModel):
         self.discord()
 
 
-def analyze_sentiment(text: str) -> Dict[str, Any]:
+def sentiment_analysis(text: str) -> Dict[str, Any]:
     """Analyze sentiment of text.
 
     Args:
@@ -83,13 +84,10 @@ def analyze_sentiment(text: str) -> Dict[str, Any]:
     # Get from registry or create and register if not exists
     model_instance = get_tool('sentiment_analysis')
     if model_instance is None:
-        model_instance = SentimentAnalysisModel()
-        register_tool('sentiment_analysis', model_instance)
+        logging.error("Sentiment analysis model not found in registry.")
+        return {"label": "neutral", "score": 0.0}
 
-    model_instance.preload()
-    model_instance.load()
     sentiments = model_instance.predict([text])
-    model_instance.discord()
     return sentiments[0] if sentiments else {"label": "neutral", "score": 0.0}
 
 
@@ -103,7 +101,7 @@ if __name__ == "__main__":
     ]
 
     for text in texts:
-        result = analyze_sentiment(text)
+        result = sentiment_analysis(text)
         print(f"Text: '{text}'")
         print(f"Sentiment: {result['label']} (score: {result['score']:.4f})")
         print()

@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class QuestionAnsweringModel(BaseModel):
@@ -79,7 +80,7 @@ class QuestionAnsweringModel(BaseModel):
         self.discord()
 
 
-def answer_question(question: str, context: str) -> Dict[str, Any]:
+def question_answering(question: str, context: str) -> Dict[str, Any]:
     """Answer a question based on a context.
 
     Args:
@@ -92,13 +93,10 @@ def answer_question(question: str, context: str) -> Dict[str, Any]:
     # Get from registry or create and register if not exists
     model_instance = get_tool('question_answering')
     if model_instance is None:
-        model_instance = QuestionAnsweringModel()
-        register_tool('question_answering', model_instance)
+        logging.error("Question answering model not found in registry.")
+        return {"answer": "", "confidence": 0.0}
 
-    model_instance.preload()
-    model_instance.load()
     answers = model_instance.predict([question], [context])
-    model_instance.discord()
     return answers[0] if answers else {"answer": "", "confidence": 0.0}
 
 
@@ -106,7 +104,7 @@ if __name__ == "__main__":
     # Example usage
     question = "Who was Jim Henson?"
     context = "Jim Henson was a nice puppet master who created The Muppets."
-    result = answer_question(question, context)
+    result = question_answering(question, context)
     print(f"Question: {question}")
     print(f"Context: {context}")
     print(f"Answer: {result['answer']} (confidence: {result['confidence']:.4f})")

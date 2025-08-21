@@ -6,6 +6,7 @@ from typing import List
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class ImageCaptioningModel(BaseModel):
@@ -73,13 +74,10 @@ def image_captioning(image_path: str) -> str:
     # Get from registry or create and register if not exists
     model_instance = get_tool('image_captioning')
     if model_instance is None:
-        model_instance = ImageCaptioningModel()
-        register_tool('image_captioning', model_instance)
+        logging.error("Image captioning model not found in registry.")
+        return "Model not found"
 
-    model_instance.preload()
-    model_instance.load()
     captions = model_instance.predict([image_path])
-    model_instance.discord()
     return captions[0] if captions else "No caption generated"
 
 

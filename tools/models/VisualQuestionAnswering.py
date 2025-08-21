@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class VisualQuestionAnsweringModel(BaseModel):
@@ -68,7 +69,7 @@ class VisualQuestionAnsweringModel(BaseModel):
         self.discord()
 
 
-def answer_visual_question(image_path: str, question: str) -> str:
+def visual_question_answering(image_path: str, question: str) -> str:
     """Answer a question about an image.
 
     Args:
@@ -81,13 +82,10 @@ def answer_visual_question(image_path: str, question: str) -> str:
     # Get from registry or create and register if not exists
     model_instance = get_tool('visual_question_answering')
     if model_instance is None:
-        model_instance = VisualQuestionAnsweringModel()
-        register_tool('visual_question_answering', model_instance)
+        logging.error("Visual question answering model not found in registry.")
+        return ""
 
-    model_instance.preload()
-    model_instance.load()
     answers = model_instance.predict([image_path], [question])
-    model_instance.discord()
     return answers[0] if answers else ""
 
 
@@ -95,6 +93,6 @@ if __name__ == "__main__":
     # Example usage
     image_path = "enhanced_image.jpg"
     question = "what are you doing?"
-    answer = answer_visual_question(image_path, question)
+    answer = visual_question_answering(image_path, question)
     print(f"Question: {question}")
     print(f"Answer: {answer}")

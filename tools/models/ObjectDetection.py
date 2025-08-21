@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
+import logging
 
 
 class ObjectDetectionModel(BaseModel):
@@ -74,7 +75,7 @@ class ObjectDetectionModel(BaseModel):
         self.discord()
 
 
-def detect_objects(image_path: str, threshold: float = 0.9) -> List[Dict[str, Any]]:
+def object_detection(image_path: str, threshold: float = 0.9) -> List[Dict[str, Any]]:
     """Detect objects in an image.
 
     Args:
@@ -87,20 +88,17 @@ def detect_objects(image_path: str, threshold: float = 0.9) -> List[Dict[str, An
     # Get from registry or create and register if not exists
     model_instance = get_tool('object_detection')
     if model_instance is None:
-        model_instance = ObjectDetectionModel()
-        register_tool('object_detection', model_instance)
+        logging.error("Object detection model not found in registry.")
+        return []
 
-    model_instance.preload()
-    model_instance.load()
     detections = model_instance.predict([image_path], threshold)
-    model_instance.discord()
     return detections[0] if detections else []
 
 
 if __name__ == "__main__":
     # Example usage
     image_path = "path/to/your/image.jpg"
-    objects = detect_objects(image_path)
+    objects = object_detection(image_path)
     print(f"Detected objects in {image_path}:")
     for obj in objects:
         print(f"Label: {obj['label']}, Score: {obj['score']:.3f}, Box: {obj['box']}")

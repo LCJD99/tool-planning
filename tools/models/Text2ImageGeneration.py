@@ -4,6 +4,7 @@ import torch
 from typing import List, Optional
 from PIL import Image
 import os
+import logging
 from tools.models.BaseModel import BaseModel
 from agent.registry import register_tool, get_tool
 from utils.decorator import time_it
@@ -94,8 +95,8 @@ class Text2ImageGenerationModel(BaseModel):
         self.discord()
 
 
-def generate_image_from_text(prompt: str,
-                             output_path: str ,
+def text2image_genenration(prompt: str,
+                             output_path: str,
                            num_inference_steps: int = 50,
                            guidance_scale: float = 7.5,
                            height: int = 512,
@@ -111,15 +112,14 @@ def generate_image_from_text(prompt: str,
         output_path: path to save the generated image
 
     Returns:
-        Generated PIL image
+        Path to the saved image or empty string if failed
     """
     # Get from registry or create and register if not exists
     model_instance = get_tool('text2image_generation')
     if model_instance is None:
-        model_instance = Text2ImageGenerationModel()
-        register_tool('text2image_generation', model_instance)
+        logging.error("Text to image generation model not found in registry.")
+        return ""
 
-    model_instance.load()  # Direct load since we don't preload for Stable Diffusion
     images = model_instance.predict(
         [prompt],
         num_inference_steps=num_inference_steps,
@@ -127,21 +127,20 @@ def generate_image_from_text(prompt: str,
         height=height,
         width=width
     )
-    model_instance.discord()
 
     image = images[0] if images else None
-# Save the image if output path is provided
-
+    # Save the image if output path is provided
     if image and output_path:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         image.save(output_path)
-
-    return output_path
+        return output_path
+    
+    return ""
 
 
 if __name__ == "__main__":
     # Example usage
     prompt = "a photo of an astronaut riding a horse on mars"
     output_path = "astronaut_rides_horse.png"
-    image = generate_image_from_text(prompt, output_path=output_path)
+    image = text2image_genenration(prompt, output_path=output_path)
     print(f"Generated image saved to {output_path}")
