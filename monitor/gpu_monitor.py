@@ -14,7 +14,7 @@ def init_pynvml():
         logging.error(f"Failed to initialize pynvml: {e}")
         handle = None
 
-def start_gpu_monitoring(interval=0.1, output_file='gpu_memory_record.csv', stop_event=None):
+def start_gpu_monitoring(interval=0.2, output_file='gpu_memory_record.csv', stop_event=None):
     """
     Start continuous GPU memory monitoring in a separate thread
 
@@ -61,7 +61,7 @@ def start_gpu_monitoring(interval=0.1, output_file='gpu_memory_record.csv', stop
             else:
                 used_mem = 0
                 gpu_utilization = 0
-                
+
                 # Try using GPUtil as an alternative
                 try:
                     gpus = GPUtil.getGPUs()

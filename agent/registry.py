@@ -109,6 +109,9 @@ class ToolRegistry:
             if tool_name not in self._tools:
                 self.register(tool_name, MODEL_MAP[tool_name]())
 
+            if self._state[tool_name] != ModelWeightState.DISK:
+                return
+
             tool = self._tools[tool_name]
             if hasattr(tool, 'preload') and callable(tool.preload):
                 tool.preload()

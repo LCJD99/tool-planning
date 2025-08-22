@@ -125,6 +125,7 @@ class MulModelAgent:
 
         for iteration in range(max_iterations):
             # Get LLM response
+            logging.info(f"StageRecord: LLM Request{iteration}")
             ai_msg = self.llm_with_tools.invoke(self.messages)
             self.messages.append(ai_msg)
 

@@ -10,6 +10,7 @@ import logging
 import uvicorn
 import signal
 import sys
+from logger.config import setup_logger
 
 
 from agent.MulModelAgent import MulModelAgent
@@ -63,18 +64,13 @@ def reset_agent():
     agent.reset()
     return {"status": "success", "message": "Agent reset successfully"}
 
-
-
-
-
 def main():
     """Run the FastAPI application."""
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
         port=8001,
-        reload=True,
-        log_level="info"
+        log_level="debug"
     )
 
 if __name__ == "__main__":
