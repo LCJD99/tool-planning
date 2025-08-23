@@ -19,6 +19,9 @@ import logging
 from benchmark.general_dataset import GeneralDataset
 from monitor import *
 from typing import List, Any
+from utils.utils import generate_intervals
+import asyncio
+import time
 
 
 _N = 1
@@ -169,6 +172,52 @@ def run_zero_gpt():
 
     logging.info(f"Evaluation results: clips: {np.mean(clips)}, berts: {np.mean(berts)}, image: {np.mean(similairies)}, all: {np.mean(rewards)}")
 
+async def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) -> str:
+    """
+    Create an AsyncMulModelAgent instance and process the given prompt.
+
+    Args:
+        prompt: The input prompt to process
+        session_id: Unique identifier for the session
+        max_iterations: Maximum number of iterations for the agent
+
+    Returns:
+        The response from the agent
+    """
+    logging.info(f"Creating agent for session {session_id}")
+    
+    # Create a new agent instance for this request
+    agent = MulModelAgent(
+        model="./qwen2.5",
+        api_key="fake api",
+        base_url="http://localhost:8000/v1",
+        temperature=0.0,
+    )
+    
+    try:
+        # Process the prompt
+        response = await agent.process_async(prompt, max_iterations)
+        logging.info(f"Session {session_id} completed successfully")
+        return response
+    except Exception as e:
+        error_msg = f"Error processing session {session_id}: {str(e)}"
+        logging.error(error_msg)
+        return error_msg
+
+async def simulate_requests(num_requests: int, rate: float):
+    intervals = generate_intervals(rate, num_requests)
+    openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
+    prompts = [openagi.get_task_prompt_from_index(27)]
+    for i in range(num_requests):
+        logging.info(f"Simulating request {i+1}/{num_requests}")
+        start_time = time.time()
+        response = await create_agent_and_process(prompts[i % len(prompts)], session_id=f"session_{i}", max_iterations=20)
+        end_time = time.time()
+        logging.info(f"Time taken for request {i+1}: {end_time - start_time:.2f} seconds")
+        
+        if i < num_requests - 1:
+            await asyncio.sleep(3)
+
 def with_monitor():
     try:
         cpu_monitor_thread, cpu_stop_event = start_cpu_monitoring()
@@ -182,7 +231,10 @@ def with_monitor():
 def without_monitor():
     run_zero_gpt()
 
+def async_run():
+    asyncio.run(simulate_requests(2, 5))
+
 if __name__ == '__main__':
     setup_logger(log_level = logging.INFO)
     without_monitor()
-    # with_monitor()
+    async_run()
