@@ -12,10 +12,10 @@ from typing import Dict, List, Any, Optional, Union, Callable
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
-from agent.Tools import tools
 from utils.utils import create_function_name_map
 from scheduler.SerialAliveScheduler import SerialAliveScheduler
 from tools.model_map import MODEL_MAP
+from agent.Tools import tools
 from agent.registry import tool_registry
 import os
 
@@ -31,7 +31,7 @@ class MulModelAgent:
     4. Managing multi-turn conversation with the LLM
     """
 
-    def __init__(self, model: str = "./qwen2.5", api_key: str = "fake api", 
+    def __init__(self, model: str = "./qwen2.5", api_key: str = "fake api",
                  base_url: str = "http://localhost:8000/v1", temperature: float = 0.0,
                  max_workers: Optional[int] = None):
         """
@@ -53,7 +53,7 @@ class MulModelAgent:
         # Create function map for tool execution
         tool_functions = [t.func for t in tools]
         self.function_map = create_function_name_map(tool_functions)
-        
+
         # Create the async scheduler
         self.scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map)
 
@@ -102,14 +102,14 @@ class MulModelAgent:
         """
         # Start with the user's prompt
         self.messages = [HumanMessage(content=prompt)]
-        
+
         # Preload commonly used tools
-        self.scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation'])
+        # self.scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation'])
 
         for iteration in range(max_iterations):
             # Get LLM response
             logging.info(f"StageRecord: LLM Request{iteration}")
-            
+
             # Run LLM invoke in executor to avoid blocking the event loop
             loop = asyncio.get_event_loop()
             ai_msg = await loop.run_in_executor(
@@ -123,9 +123,7 @@ class MulModelAgent:
             # Check for tool calls
             if not ai_msg.tool_calls:
                 # Release GPU resources when done
-                await loop.run_in_executor(
-                    None, lambda: tool_registry.swap()
-                ) 
+                # await loop.run_in_executor( None, lambda: tool_registry.swap())
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
 
@@ -138,7 +136,7 @@ class MulModelAgent:
 
             # Check for tool execution errors
             has_tool_execution_error = any(
-                "error" in msg.content for msg in tool_messages 
+                "error" in msg.content for msg in tool_messages
                 if isinstance(msg.content, str) and msg.content.startswith("{")
             )
 
@@ -158,7 +156,7 @@ class MulModelAgent:
         """
         self.messages = []
         logging.info("Agent conversation history has been reset.")
-        
+
     def close(self) -> None:
         """
         Clean up resources used by the agent.

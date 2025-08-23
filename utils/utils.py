@@ -51,3 +51,15 @@ def load_image_for_colorization(image_paths: List[str]) -> List[torch.Tensor]:
             print(f"警告：加载文件时出错 {path}，错误信息: {e}")
 
     return loaded_tensors
+
+
+def generate_intervals(num_requests: int, rate: int) -> List[float]:
+    import numpy as np
+    import logging
+    rate_per_second = rate / 60
+
+    # For a Poisson process, the time between events follows an exponential distribution
+    # with parameter lambda = rate
+    intervals = np.random.exponential(scale=1/rate_per_second, size=num_requests)
+    logging.debug(f"Generated {num_requests} intervals with mean: {np.mean(intervals):.2f}s")
+    return intervals.tolist()

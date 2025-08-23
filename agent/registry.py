@@ -123,55 +123,55 @@ class ToolRegistry:
             # but use individual locks for each tool's preload operation
             with self._global_lock:
                 tool_items = list(self._tools.items())
-            
+
             for name, tool in tool_items:
                 # Get the tool-specific lock
                 with self._global_lock:
                     if name not in self._locks:
                         self._locks[name] = threading.RLock()
                     tool_lock = self._locks[name]
-                
+
                 # Use the tool-specific lock for preloading
                 with tool_lock:
                     # Check state again after acquiring the lock
                     with self._global_lock:
                         if self._state[name] != ModelWeightState.DISK:
                             continue
-                    
+
                     if hasattr(tool, 'preload') and callable(tool.preload):
                         tool.preload()
-                        
+
                         with self._global_lock:
                             self._state[name] = ModelWeightState.CPU
-                        
+
                         logging.info(f"Tool '{name}' preloaded into memory.")
         else:
             # For a specific tool, first check/register with the global lock
             with self._global_lock:
                 if tool_name not in self._tools:
                     self.register(tool_name, MODEL_MAP[tool_name]())
-                
+
                 if self._state[tool_name] != ModelWeightState.DISK:
                     return
-                
+
                 if tool_name not in self._locks:
                     self._locks[tool_name] = threading.RLock()
                 tool_lock = self._locks[tool_name]
                 tool = self._tools[tool_name]
-            
+
             # Then use the tool-specific lock for the preload operation
             with tool_lock:
                 # Check state again after acquiring the lock
                 with self._global_lock:
                     if self._state[tool_name] != ModelWeightState.DISK:
                         return
-                
+
                 if hasattr(tool, 'preload') and callable(tool.preload):
                     tool.preload()
-                    
+
                     with self._global_lock:
                         self._state[tool_name] = ModelWeightState.CPU
-                    
+
                     logging.info(f"Tool '{tool_name}' preloaded into memory.")
                 else:
                     logging.error(f"Tool '{tool_name}' no implement preload method.")
@@ -190,27 +190,27 @@ class ToolRegistry:
             # but use individual locks for each tool's load operation
             with self._global_lock:
                 tool_items = list(self._tools.items())
-            
+
             for name, tool in tool_items:
                 # Get the tool-specific lock
                 with self._global_lock:
                     if name not in self._locks:
                         self._locks[name] = threading.RLock()
                     tool_lock = self._locks[name]
-                
+
                 # Use the tool-specific lock for loading
                 with tool_lock:
                     # Check state again after acquiring the lock
                     with self._global_lock:
                         if self._state[name] != ModelWeightState.CPU:
                             continue
-                    
+
                     if hasattr(tool, 'load') and callable(tool.load):
                         tool.load()
-                        
+
                         with self._global_lock:
                             self._state[name] = ModelWeightState.GPU
-                        
+
                         logging.info(f"Tool '{name}' loaded into GPU memory.")
         else:
             # For a specific tool, first check with the global lock
@@ -218,35 +218,35 @@ class ToolRegistry:
                 if tool_name not in self._tools:
                     logging.warning(f"Tool '{tool_name}' not found in registry.")
                     return
-                
+
                 if self._state[tool_name] != ModelWeightState.CPU:
-                    logging.info(f"Tool '{tool_name}' not in CPU state, cannot load to GPU.")
+                    logging.info(f"Tool '{tool_name}' not in CPU(but in {self._state[tool_name]}) , cannot load to GPU")
                     return
-                
+
                 if tool_name not in self._locks:
                     self._locks[tool_name] = threading.RLock()
                 tool_lock = self._locks[tool_name]
                 tool = self._tools[tool_name]
-            
+
             # Then use the tool-specific lock for the load operation
             with tool_lock:
                 # Check state again after acquiring the lock
                 with self._global_lock:
                     if self._state[tool_name] != ModelWeightState.CPU:
                         return
-                
+
                 if hasattr(tool, 'load') and callable(tool.load):
                     tool.load()
-                    
+
                     with self._global_lock:
                         self._state[tool_name] = ModelWeightState.GPU
-                    
+
                     logging.info(f"Tool '{tool_name}' loaded into GPU memory.")
 
     def swap(self, tool_name: Optional[str] = None) -> None:
         """
         Swap tool instances from GPU to CPU memory.
-        
+
         Args:
             tool_name: The name of the tool to swap, or None to swap all
         """
@@ -255,27 +255,27 @@ class ToolRegistry:
             # but use individual locks for each tool's swap operation
             with self._global_lock:
                 tool_items = list(self._tools.items())
-            
+
             for name, tool in tool_items:
                 # Get the tool-specific lock
                 with self._global_lock:
                     if name not in self._locks:
                         self._locks[name] = threading.RLock()
                     tool_lock = self._locks[name]
-                
+
                 # Use the tool-specific lock for swapping
                 with tool_lock:
                     # Check state again after acquiring the lock
                     with self._global_lock:
                         if self._state[name] != ModelWeightState.GPU:
                             continue
-                    
+
                     if hasattr(tool, 'swap') and callable(tool.swap):
                         tool.swap()
-                        
+
                         with self._global_lock:
                             self._state[name] = ModelWeightState.CPU
-                        
+
                         logging.info(f"Tool '{name}' swapped from GPU to CPU memory.")
         else:
             # For a specific tool, first check with the global lock
@@ -283,29 +283,29 @@ class ToolRegistry:
                 if tool_name not in self._tools:
                     logging.warning(f"Tool '{tool_name}' not found in registry.")
                     return
-                
+
                 if self._state[tool_name] != ModelWeightState.GPU:
                     logging.info(f"Tool '{tool_name}' not in GPU state, cannot swap to CPU.")
                     return
-                
+
                 if tool_name not in self._locks:
                     self._locks[tool_name] = threading.RLock()
                 tool_lock = self._locks[tool_name]
                 tool = self._tools[tool_name]
-            
+
             # Then use the tool-specific lock for the swap operation
             with tool_lock:
                 # Check state again after acquiring the lock
                 with self._global_lock:
                     if self._state[tool_name] != ModelWeightState.GPU:
                         return
-                
+
                 if hasattr(tool, 'swap') and callable(tool.swap):
                     tool.swap()
-                    
+
                     with self._global_lock:
                         self._state[tool_name] = ModelWeightState.CPU
-                    
+
                     logging.info(f"Tool '{tool_name}' swapped from GPU to CPU memory.")
 
     def discord(self, tool_name: Optional[str] = None) -> None:
@@ -320,24 +320,24 @@ class ToolRegistry:
             # but use individual locks for each tool's discord operation
             with self._global_lock:
                 tool_items = list(self._tools.items())
-            
+
             for name, tool in tool_items:
                 # Get the tool-specific lock
                 with self._global_lock:
                     if name not in self._locks:
                         self._locks[name] = threading.RLock()
                     tool_lock = self._locks[name]
-                
+
                 # Use the tool-specific lock for discord
                 with tool_lock:
                     if hasattr(tool, 'discord') and callable(tool.discord):
                         tool.discord()
-                        
+
                         with self._global_lock:
                             self._state[name] = ModelWeightState.DISK
-                        
+
                         logging.info(f"Tool '{name}' cleared to disk.")
-            
+
             logging.info("All tools cleared from registry to disk.")
         else:
             # For a specific tool, first check with the global lock
@@ -345,20 +345,20 @@ class ToolRegistry:
                 if tool_name not in self._tools:
                     logging.warning(f"Tool '{tool_name}' not found in registry.")
                     return
-                
+
                 if tool_name not in self._locks:
                     self._locks[tool_name] = threading.RLock()
                 tool_lock = self._locks[tool_name]
                 tool = self._tools[tool_name]
-            
+
             # Then use the tool-specific lock for the discord operation
             with tool_lock:
                 if hasattr(tool, 'discord') and callable(tool.discord):
                     tool.discord()
-                    
+
                     with self._global_lock:
                         self._state[tool_name] = ModelWeightState.DISK
-                    
+
                     logging.info(f"Tool '{tool_name}' cleared to disk.")
 
 
