@@ -17,7 +17,8 @@ logger = logging.getLogger("uvicorn.error")
 
 # Initialize FastAPI app
 app = FastAPI(title="Multi-Model Agent API",
-              description="API for interacting with the Multi-Model Agent")
+              description="API for interacting with the Multi-Model Agent",
+              debug=True)
 
 
 # Custom signal handler to avoid rich_toolkit conflicts
@@ -67,7 +68,8 @@ def main():
         "app:app",
         host="0.0.0.0",
         port=8001,
-        log_level="debug"
+        log_level="debug",
+        debug=True
     )
 
 if __name__ == "__main__":

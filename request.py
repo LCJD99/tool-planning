@@ -23,7 +23,7 @@ logger = logging.getLogger("request_client")
 class ApiClient:
     """Client for making requests to the Multi-Model Agent API with Poisson distributed intervals."""
 
-    def __init__(self, base_url: str = "http://localhost:8001", rate: float = 1.0):
+    def __init__(self, base_url: str = "http://0.0.0.0:8001", rate: float = 1.0):
         """
         Initialize the API client.
 

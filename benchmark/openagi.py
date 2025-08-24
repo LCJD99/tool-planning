@@ -22,6 +22,10 @@ from typing import List, Any
 from utils.utils import generate_intervals
 import threading
 import time
+from scheduler.SerialAliveScheduler import SerialAliveScheduler
+from tools.model_map import MODEL_MAP
+from agent.Tools import tools
+from utils.utils import create_function_name_map
 from queue import Queue
 
 
@@ -34,7 +38,7 @@ class OpenAGI():
         self.batch_size = batch_size
         self.task_descriptions = txt_loader(os.path.join(data_path, "task_description.txt"))
         self.test_task_idx = task_set
-    
+
     def get_task_prompt_from_index(self, task_index: int) -> str:
         prompt = self.task_descriptions[task_index].strip()
         dataset = GeneralDataset(str(task_index), self.data_path)
@@ -47,7 +51,7 @@ class OpenAGI():
             prompt = f"{prompt}, text: {batch['input']['text'][j]}"
 
         if batch['input']['image'] is not None:
-            prompt = f"{prompt}, picture path: {batch['input']['image'][j]}, if is low quality, you should use super resolution generate intermediate image path: /tmp/xxx.jpg(xxx is a random id name)"
+            prompt = f"{prompt}, picture path: {batch['input']['image'][j]} if is low quality, you should use super resolution generate intermediate image path: /tmp/xxx.jpg"
 
         if task_index <= 14:
             prompt = f"{prompt}, onle return new picture path in " ",  easy for me to parse"
@@ -56,7 +60,7 @@ class OpenAGI():
             prompt = f"{prompt}, generated picture path /tmp/img.jpg"
         else:
             prompt = f"{prompt}, give me last tool output only"
-        
+
         logging.info(f"prompt: {prompt}")
         return prompt
 
@@ -73,7 +77,7 @@ def run_zero_gpt():
     # os.environ['TRANSFORMERS_CACHE'] = args.huggingface_cache
 
     print("Begin loading datasets...")
-    task_discriptions = txt_loader(data_path+"task_description.txt")
+    task_descriptions = txt_loader(data_path+"task_description.txt")
     # task_idx = [0,21,61,105,110,120,10,35,62,107,115]
     # test_task_idx = [2,3,10,15,20,35,45,55,65,70,90,106,107]
     test_task_idx = [27]
@@ -83,7 +87,7 @@ def run_zero_gpt():
     #     dataloader = DataLoader(dataset, batch_size=batch_size)
     #     test_dataloaders.append(dataloader)
 
-    test_tasks = [task_discriptions[i].strip() for i in test_task_idx]
+    test_tasks = [task_descriptions[i].strip() for i in test_task_idx]
     print("Finish loading datasets!")
 
     print("Begin loading evaluation metrics...")
@@ -186,7 +190,7 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) 
         The response from the agent
     """
     logging.info(f"Creating agent for session {session_id}")
-    
+
     # Create a new agent instance for this request
     agent = MulModelAgent(
         model="./qwen2.5",
@@ -194,11 +198,11 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) 
         base_url="http://localhost:8000/v1",
         temperature=0.0,
     )
-    
+
     try:
         # Process the prompt
         response = agent.process(prompt, max_iterations)
-        logging.info(f"Session {session_id} completed successfully")
+        logging.info(f"Session {session_id} completed successfully, response: {response}")
         return response
     except Exception as e:
         error_msg = f"Error processing session {session_id}: {str(e)}"
@@ -208,7 +212,7 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) 
 def process_request(prompt: str, session_id: str, max_iterations: int, result_queue: Queue) -> None:
     """
     Process a request and put the result in the queue.
-    
+
     Args:
         prompt: The input prompt to process
         session_id: Unique identifier for the session
@@ -224,11 +228,11 @@ def simulate_requests(num_requests: int, rate: float):
     prompts = [openagi.get_task_prompt_from_index(27)]
     threads = []
     result_queue = Queue()
-    
+
     for i in range(num_requests):
         logging.info(f"Simulating request {i+1}/{num_requests}")
         start_time = time.time()
-        
+
         # Create and start a thread for this request
         thread = threading.Thread(
             target=process_request,
@@ -236,17 +240,17 @@ def simulate_requests(num_requests: int, rate: float):
         )
         thread.start()
         threads.append((thread, start_time, i))
-        
+
         if i < num_requests - 1:
             # Wait between requests
             time.sleep(3)
-    
+
     # Wait for all threads to complete
     for thread, start_time, i in threads:
         thread.join()
         end_time = time.time()
         logging.info(f"Time taken for request {i+1}: {end_time - start_time:.2f} seconds")
-    
+
     # Process results from the queue
     while not result_queue.empty():
         session_id, response = result_queue.get()
@@ -266,9 +270,13 @@ def without_monitor():
     run_zero_gpt()
 
 def thread_run():
+    tool_functions = [t.func for t in tools]
+    function_map = create_function_name_map(tool_functions)
+    scheduler = SerialAliveScheduler(MODEL_MAP, function_map)
+    scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation', 'image_classification'])
     simulate_requests(2, 5)
 
 if __name__ == '__main__':
     setup_logger(log_level = logging.INFO)
-    without_monitor()
     thread_run()
+
