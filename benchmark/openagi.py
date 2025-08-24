@@ -20,8 +20,9 @@ from benchmark.general_dataset import GeneralDataset
 from monitor import *
 from typing import List, Any
 from utils.utils import generate_intervals
-import asyncio
+import threading
 import time
+from queue import Queue
 
 
 _N = 1
@@ -35,7 +36,7 @@ class OpenAGI():
         self.test_task_idx = task_set
     
     def get_task_prompt_from_index(self, task_index: int) -> str:
-        prompt = self.task_discriptions[task_index].strip()
+        prompt = self.task_descriptions[task_index].strip()
         dataset = GeneralDataset(str(task_index), self.data_path)
         logging.info(f"=== start task {task_index} ===")
 
@@ -172,9 +173,9 @@ def run_zero_gpt():
 
     logging.info(f"Evaluation results: clips: {np.mean(clips)}, berts: {np.mean(berts)}, image: {np.mean(similairies)}, all: {np.mean(rewards)}")
 
-async def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) -> str:
+def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) -> str:
     """
-    Create an AsyncMulModelAgent instance and process the given prompt.
+    Create a MulModelAgent instance and process the given prompt.
 
     Args:
         prompt: The input prompt to process
@@ -196,7 +197,7 @@ async def create_agent_and_process(prompt: str, session_id: str, max_iterations:
     
     try:
         # Process the prompt
-        response = await agent.process_async(prompt, max_iterations)
+        response = agent.process(prompt, max_iterations)
         logging.info(f"Session {session_id} completed successfully")
         return response
     except Exception as e:
@@ -204,19 +205,52 @@ async def create_agent_and_process(prompt: str, session_id: str, max_iterations:
         logging.error(error_msg)
         return error_msg
 
-async def simulate_requests(num_requests: int, rate: float):
+def process_request(prompt: str, session_id: str, max_iterations: int, result_queue: Queue) -> None:
+    """
+    Process a request and put the result in the queue.
+    
+    Args:
+        prompt: The input prompt to process
+        session_id: Unique identifier for the session
+        max_iterations: Maximum number of iterations for the agent
+        result_queue: Queue to store the result
+    """
+    result = create_agent_and_process(prompt, session_id, max_iterations)
+    result_queue.put((session_id, result))
+
+def simulate_requests(num_requests: int, rate: float):
     intervals = generate_intervals(rate, num_requests)
     openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
     prompts = [openagi.get_task_prompt_from_index(27)]
+    threads = []
+    result_queue = Queue()
+    
     for i in range(num_requests):
         logging.info(f"Simulating request {i+1}/{num_requests}")
         start_time = time.time()
-        response = await create_agent_and_process(prompts[i % len(prompts)], session_id=f"session_{i}", max_iterations=20)
-        end_time = time.time()
-        logging.info(f"Time taken for request {i+1}: {end_time - start_time:.2f} seconds")
+        
+        # Create and start a thread for this request
+        thread = threading.Thread(
+            target=process_request,
+            args=(prompts[i % len(prompts)], f"session_{i}", 20, result_queue)
+        )
+        thread.start()
+        threads.append((thread, start_time, i))
         
         if i < num_requests - 1:
-            await asyncio.sleep(3)
+            # Wait between requests
+            time.sleep(3)
+    
+    # Wait for all threads to complete
+    for thread, start_time, i in threads:
+        thread.join()
+        end_time = time.time()
+        logging.info(f"Time taken for request {i+1}: {end_time - start_time:.2f} seconds")
+    
+    # Process results from the queue
+    while not result_queue.empty():
+        session_id, response = result_queue.get()
+        logging.info(f"Result from {session_id}: {response[:100]}...")
 
 def with_monitor():
     try:
@@ -231,10 +265,10 @@ def with_monitor():
 def without_monitor():
     run_zero_gpt()
 
-def async_run():
-    asyncio.run(simulate_requests(2, 5))
+def thread_run():
+    simulate_requests(2, 5)
 
 if __name__ == '__main__':
     setup_logger(log_level = logging.INFO)
     without_monitor()
-    async_run()
+    thread_run()

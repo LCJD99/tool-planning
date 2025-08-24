@@ -1,13 +1,14 @@
 """
-Asynchronous Multi-Model Agent for handling LLM interactions and tool executions.
+Multi-Model Agent for handling LLM interactions and tool executions.
 
-This class provides an asynchronous version of MulModelAgent, supporting
-parallel processing of prompts and tool executions using asyncio.
+This class provides a Multi-Model Agent, supporting
+parallel processing of prompts and tool executions using multi-threading.
 """
 
 import json
 import logging
-import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Any, Optional, Union, Callable
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
@@ -18,16 +19,17 @@ from tools.model_map import MODEL_MAP
 from agent.Tools import tools
 from agent.registry import tool_registry
 import os
+import time
 
 
 class MulModelAgent:
     """
-    Asynchronous Multi-Model Agent that orchestrates LLM interactions and tool executions.
+    Multi-Model Agent that orchestrates LLM interactions and tool executions.
 
     This agent handles:
-    1. Processing input prompts through an LLM asynchronously
+    1. Processing input prompts through an LLM using multi-threading
     2. Parsing tool calls from LLM responses
-    3. Executing tools in parallel using AsyncParallelScheduler
+    3. Executing tools in parallel using thread pool
     4. Managing multi-turn conversation with the LLM
     """
 
@@ -35,7 +37,7 @@ class MulModelAgent:
                  base_url: str = "http://localhost:8000/v1", temperature: float = 0.0,
                  max_workers: Optional[int] = None):
         """
-        Initialize the Async Multi-Model Agent.
+        Initialize the Multi-Model Agent.
 
         Args:
             model: The name of the LLM model to use
@@ -72,9 +74,9 @@ class MulModelAgent:
         self.llm_with_tools = self.llm.bind_tools(tools)
         logging.info(f"Bound {len(tools)} tools to the LLM.")
 
-    async def process_async(self, prompt: str, max_iterations: int = 10, is_cot: bool = True) -> str:
+    def process(self, prompt: str, max_iterations: int = 10, is_cot: bool = True) -> str:
         """
-        Process a prompt asynchronously through the agent, potentially invoking tools in parallel.
+        Process a prompt through the agent, potentially invoking tools in parallel.
 
         Args:
             prompt: The user's input prompt
@@ -87,11 +89,11 @@ class MulModelAgent:
         if not is_cot:
             prompt = f"{prompt}, plan all tool should use in only one iteration"
 
-        return await self._cot_process_async(prompt, max_iterations)
+        return self._cot_process(prompt, max_iterations)
 
-    async def _cot_process_async(self, prompt: str, max_iterations: int = 10) -> str:
+    def _cot_process(self, prompt: str, max_iterations: int = 10) -> str:
         """
-        Process a prompt through the agent asynchronously, potentially invoking tools.
+        Process a prompt through the agent, potentially invoking tools.
 
         Args:
             prompt: The user's input prompt
@@ -111,10 +113,7 @@ class MulModelAgent:
             logging.info(f"StageRecord: LLM Request{iteration}")
 
             # Run LLM invoke in executor to avoid blocking the event loop
-            loop = asyncio.get_event_loop()
-            ai_msg = await loop.run_in_executor(
-                None, lambda: self.llm_with_tools.invoke(self.messages)
-            )
+            ai_msg = self.llm_with_tools.invoke(self.messages)
             self.messages.append(ai_msg)
 
             # Log the current iteration
@@ -124,14 +123,13 @@ class MulModelAgent:
             if not ai_msg.tool_calls:
                 # Release GPU resources when done
                 # await loop.run_in_executor( None, lambda: tool_registry.swap())
+                tool_registry.swap()
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
 
             # Process tool calls in parallel
             self.scheduler.add_tasks(iteration, ai_msg.tool_calls)
-            tool_messages = await loop.run_in_executor(
-                None, lambda: self.scheduler.execute(iteration)
-            )
+            tool_messages = self.scheduler.execute(iteration)
             self.messages.extend(tool_messages)
 
             # Check for tool execution errors
@@ -145,9 +143,7 @@ class MulModelAgent:
                 # Optionally add special handling here
 
         # If we've reached max iterations, get a final response
-        final_response = await loop.run_in_executor(
-            None, lambda: self.llm.invoke(self.messages)
-        )
+        final_response = self.llm.invoke(self.messages)
         return final_response.content
 
     def reset(self) -> None:
@@ -163,4 +159,4 @@ class MulModelAgent:
         """
         if hasattr(self, 'scheduler'):
             self.scheduler.close()
-        logging.info("Async agent resources cleaned up.")
+        logging.info("Agent resources cleaned up.")
