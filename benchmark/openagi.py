@@ -22,6 +22,10 @@ from typing import List, Any
 from utils.utils import generate_intervals
 import asyncio
 import time
+from scheduler.SerialAliveScheduler import SerialAliveScheduler
+from tools.model_map import MODEL_MAP
+from agent.Tools import tools
+from utils.utils import create_function_name_map
 
 
 _N = 1
@@ -33,9 +37,9 @@ class OpenAGI():
         self.batch_size = batch_size
         self.task_descriptions = txt_loader(os.path.join(data_path, "task_description.txt"))
         self.test_task_idx = task_set
-    
+
     def get_task_prompt_from_index(self, task_index: int) -> str:
-        prompt = self.task_discriptions[task_index].strip()
+        prompt = self.task_descriptions[task_index].strip()
         dataset = GeneralDataset(str(task_index), self.data_path)
         logging.info(f"=== start task {task_index} ===")
 
@@ -46,7 +50,7 @@ class OpenAGI():
             prompt = f"{prompt}, text: {batch['input']['text'][j]}"
 
         if batch['input']['image'] is not None:
-            prompt = f"{prompt}, picture path: {batch['input']['image'][j]}, if is low quality, you should use super resolution generate intermediate image path: /tmp/xxx.jpg(xxx is a random id name)"
+            prompt = f"{prompt}, picture path: {batch['input']['image'][j]} if is low quality, you should use super resolution generate intermediate image path: /tmp/xxx.jpg"
 
         if task_index <= 14:
             prompt = f"{prompt}, onle return new picture path in " ",  easy for me to parse"
@@ -55,7 +59,7 @@ class OpenAGI():
             prompt = f"{prompt}, generated picture path /tmp/img.jpg"
         else:
             prompt = f"{prompt}, give me last tool output only"
-        
+
         logging.info(f"prompt: {prompt}")
         return prompt
 
@@ -72,7 +76,7 @@ def run_zero_gpt():
     # os.environ['TRANSFORMERS_CACHE'] = args.huggingface_cache
 
     print("Begin loading datasets...")
-    task_discriptions = txt_loader(data_path+"task_description.txt")
+    task_descriptions = txt_loader(data_path+"task_description.txt")
     # task_idx = [0,21,61,105,110,120,10,35,62,107,115]
     # test_task_idx = [2,3,10,15,20,35,45,55,65,70,90,106,107]
     test_task_idx = [27]
@@ -82,7 +86,7 @@ def run_zero_gpt():
     #     dataloader = DataLoader(dataset, batch_size=batch_size)
     #     test_dataloaders.append(dataloader)
 
-    test_tasks = [task_discriptions[i].strip() for i in test_task_idx]
+    test_tasks = [task_descriptions[i].strip() for i in test_task_idx]
     print("Finish loading datasets!")
 
     print("Begin loading evaluation metrics...")
@@ -185,7 +189,7 @@ async def create_agent_and_process(prompt: str, session_id: str, max_iterations:
         The response from the agent
     """
     logging.info(f"Creating agent for session {session_id}")
-    
+
     # Create a new agent instance for this request
     agent = MulModelAgent(
         model="./qwen2.5",
@@ -193,11 +197,11 @@ async def create_agent_and_process(prompt: str, session_id: str, max_iterations:
         base_url="http://localhost:8000/v1",
         temperature=0.0,
     )
-    
+
     try:
         # Process the prompt
         response = await agent.process_async(prompt, max_iterations)
-        logging.info(f"Session {session_id} completed successfully")
+        logging.info(f"Session {session_id} completed successfully, response: {response}")
         return response
     except Exception as e:
         error_msg = f"Error processing session {session_id}: {str(e)}"
@@ -208,15 +212,33 @@ async def simulate_requests(num_requests: int, rate: float):
     intervals = generate_intervals(rate, num_requests)
     openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
     prompts = [openagi.get_task_prompt_from_index(27)]
-    for i in range(num_requests):
-        logging.info(f"Simulating request {i+1}/{num_requests}")
+
+    # Create tasks list to track all pending requests
+    tasks = []
+
+    async def process_request(prompt: str, session_id: str, request_num: int):
         start_time = time.time()
-        response = await create_agent_and_process(prompts[i % len(prompts)], session_id=f"session_{i}", max_iterations=20)
+        logging.info(f"Starting request {request_num+1}/{num_requests}")
+        response = await create_agent_and_process(prompt, session_id, max_iterations=20)
         end_time = time.time()
-        logging.info(f"Time taken for request {i+1}: {end_time - start_time:.2f} seconds")
-        
+        logging.info(f"Time taken for request {request_num+1}: {end_time - start_time:.2f} seconds")
+        return response
+
+    # Start all requests according to their intervals
+    for i in range(num_requests):
+        # Schedule each request
+        task = asyncio.create_task(
+            process_request(prompts[i % len(prompts)], f"session_{i}", i)
+        )
+        tasks.append(task)
+
+        # Sleep before launching the next request (except for the last one)
         if i < num_requests - 1:
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
+
+    # Wait for all requests to complete and collect results
+    responses = await asyncio.gather(*tasks)
+    logging.info(f"All {num_requests} requests completed")
 
 def with_monitor():
     try:
@@ -232,9 +254,14 @@ def without_monitor():
     run_zero_gpt()
 
 def async_run():
-    asyncio.run(simulate_requests(2, 5))
+    tool_functions = [t.func for t in tools]
+    function_map = create_function_name_map(tool_functions)
+    scheduler = SerialAliveScheduler(MODEL_MAP, function_map)
+    scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation', 'image_classification'])
+
+    asyncio.run(simulate_requests(3, 5))
 
 if __name__ == '__main__':
     setup_logger(log_level = logging.INFO)
-    without_monitor()
+    # without_monitor()
     async_run()
