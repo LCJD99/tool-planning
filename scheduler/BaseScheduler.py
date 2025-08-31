@@ -4,27 +4,28 @@ from tools.models import BaseModel
 import logging
 
 class BaseScheduler():
-    def __init__(self, model_map: Dict[str, BaseModel], tools_map: Dict[str, Any]):
+    def __init__(self, model_map: Dict[str, BaseModel], tools_map: Dict[str, Any], session_id: str = "session_unknown"):
         self.task_tools = {}
         self.function_map = tools_map
         self.model_map = model_map
+        self.session_id = session_id
 
     def add_tasks(self, taskid: int, tools: List[Any]) -> None:
         """
         Add tasks to the scheduler.
-        
+
         Args:
             tasks: List of tasks to be added
         """
         self.task_tools[taskid] = tools
-    
+
     def execute(self, taskid: int) -> str:
         """
         Execute a task by its ID.
-        
+
         Args:
             taskid: ID of the task to execute
-        
+
         Returns:
             Result of the task execution
         """

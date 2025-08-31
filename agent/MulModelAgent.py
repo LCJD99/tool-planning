@@ -35,7 +35,7 @@ class MulModelAgent:
 
     def __init__(self, model: str = "./qwen2.5", api_key: str = "fake api",
                  base_url: str = "http://localhost:8000/v1", temperature: float = 0.0,
-                 max_workers: Optional[int] = None):
+                 id: int = 0):
         """
         Initialize the Multi-Model Agent.
 
@@ -57,7 +57,8 @@ class MulModelAgent:
         self.function_map = create_function_name_map(tool_functions)
 
         # Create the async scheduler
-        self.scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map)
+        self.scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map, id)
+        self.id = id
 
         logging.info(f"Initialized async agent with {len(tools)} tools")
 
@@ -89,7 +90,11 @@ class MulModelAgent:
         if not is_cot:
             prompt = f"{prompt}, plan all tool should use in only one iteration"
 
-        return self._cot_process(prompt, max_iterations)
+        start_time = time.time()
+        response = self._cot_process(prompt, max_iterations)
+        duration_time = time.time() - start_time
+        logging.info(f"StageRecord: {self.id} finish in {duration_time:.2f}s")
+        return response
 
     def _cot_process(self, prompt: str, max_iterations: int = 10) -> str:
         """
@@ -103,6 +108,7 @@ class MulModelAgent:
             The final response after all tool executions
         """
         # Start with the user's prompt
+
         self.messages = [HumanMessage(content=prompt)]
 
         # Preload commonly used tools
@@ -110,7 +116,7 @@ class MulModelAgent:
 
         for iteration in range(max_iterations):
             # Get LLM response
-            logging.info(f"StageRecord: LLM Request{iteration}")
+            logging.info(f"StageRecord: {self.id}, LLM round{iteration}")
 
             # Run LLM invoke in executor to avoid blocking the event loop
             ai_msg = self.llm_with_tools.invoke(self.messages)
@@ -123,7 +129,7 @@ class MulModelAgent:
             if not ai_msg.tool_calls:
                 # Release GPU resources when done
                 # await loop.run_in_executor( None, lambda: tool_registry.swap())
-                tool_registry.swap()
+                # tool_registry.swap()
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
 

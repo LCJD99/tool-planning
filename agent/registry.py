@@ -5,6 +5,7 @@ This module provides a centralized registry for all tool model instances,
 allowing easy access, management, and memory optimization of AI tool models.
 It includes thread safety mechanisms for concurrent access.
 """
+
 from typing import Dict, Any, Optional, Type
 import logging
 import threading
@@ -32,6 +33,7 @@ class ToolRegistry:
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
+                cls._instance._counter = {}
                 cls._instance._tools = {}
                 cls._instance._state = {}
                 cls._instance._locks = {}  # Tool-specific locks
@@ -243,6 +245,18 @@ class ToolRegistry:
 
                     logging.info(f"Tool '{tool_name}' loaded into GPU memory.")
 
+    def counter_add(self, tool_name: str) -> None:
+        """
+        Increment the usage counter for a tool.
+
+        Args:
+            tool_name: The name of the tool to increment the counter for
+        """
+        with self._global_lock:
+            if tool_name not in self._counter:
+                self._counter[tool_name] = 0
+            self._counter[tool_name] += 1
+
     def swap(self, tool_name: Optional[str] = None) -> None:
         """
         Swap tool instances from GPU to CPU memory.
@@ -360,6 +374,17 @@ class ToolRegistry:
                         self._state[tool_name] = ModelWeightState.DISK
 
                     logging.info(f"Tool '{tool_name}' cleared to disk.")
+
+
+    def get_counter_list(self) -> Dict[str, int]:
+        """
+        Get the usage counter for all tools.
+
+        Returns:
+            Dictionary with tool names as keys and their usage counts as values
+        """
+        with self._global_lock:
+            return self._counter.copy()
 
 
 class LazyToolLoader:

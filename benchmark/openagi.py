@@ -27,6 +27,7 @@ from tools.model_map import MODEL_MAP
 from agent.Tools import tools
 from utils.utils import create_function_name_map
 from queue import Queue
+from agent.registry import tool_registry
 
 
 _N = 1
@@ -51,15 +52,16 @@ class OpenAGI():
             prompt = f"{prompt}, text: {batch['input']['text'][j]}"
 
         if batch['input']['image'] is not None:
-            prompt = f"{prompt}, picture path: {batch['input']['image'][j]} if is low quality, you should use super resolution generate intermediate image path: /tmp/xxx.jpg"
+            prompt = f"{prompt}, picture path: {batch['input']['image'][j]} "
+            #if is low quality, you should use super resolution generate intermediate image path in /tmp"
 
         if task_index <= 14:
             prompt = f"{prompt}, onle return new picture path in " ",  easy for me to parse"
 
         if 105 <= task_index <= 106:
             prompt = f"{prompt}, generated picture path /tmp/img.jpg"
-        else:
-            prompt = f"{prompt}, give me last tool output only"
+        # else:
+            # prompt = f"{prompt}, give me last tool output only"
 
         logging.info(f"prompt: {prompt}")
         return prompt
@@ -140,6 +142,8 @@ def run_zero_gpt():
             else:
                 prompt = f"{prompt}, give me last tool output only"
             logging.info(f"prompt: {prompt}")
+            prompt = f"{prompt}, if use translation, only use once at last"
+
             response = agent.process(prompt, max_iterations=20)
             logging.info(f"Response: {response}")
 
@@ -197,6 +201,7 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) 
         api_key="fake api",
         base_url="http://localhost:8000/v1",
         temperature=0.0,
+        id = session_id
     )
 
     try:
@@ -222,10 +227,26 @@ def process_request(prompt: str, session_id: str, max_iterations: int, result_qu
     result = create_agent_and_process(prompt, session_id, max_iterations)
     result_queue.put((session_id, result))
 
-def simulate_requests(num_requests: int, rate: float):
-    intervals = generate_intervals(rate, num_requests)
-    openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
-    prompts = [openagi.get_task_prompt_from_index(27)]
+def seq_request(num_requests: int, prompts: List):
+    result_queue = Queue()
+
+    for i in range(num_requests):
+        logging.info(f"Simulating request {i+1}/{num_requests}")
+        start_time = time.time()
+
+        # Create and start a thread for this request
+        thread = threading.Thread(
+            target=process_request,
+            args=(prompts[i % len(prompts)], f"session_{i}", 20, result_queue)
+        )
+        thread.start()
+        thread.join()
+        end_time = time.time()
+        session_id, response = result_queue.get()
+
+        logging.info(f"Result from {session_id}: {response[:100]}...")
+
+def simulate_requests(num_requests: int, interval: float, prompts):
     threads = []
     result_queue = Queue()
 
@@ -243,13 +264,11 @@ def simulate_requests(num_requests: int, rate: float):
 
         if i < num_requests - 1:
             # Wait between requests
-            time.sleep(3)
+            time.sleep(interval)
 
     # Wait for all threads to complete
     for thread, start_time, i in threads:
         thread.join()
-        end_time = time.time()
-        logging.info(f"Time taken for request {i+1}: {end_time - start_time:.2f} seconds")
 
     # Process results from the queue
     while not result_queue.empty():
@@ -260,23 +279,60 @@ def with_monitor():
     try:
         cpu_monitor_thread, cpu_stop_event = start_cpu_monitoring()
         gpu_monitor_thread, gpu_stop_event = start_gpu_monitoring()
-        run_zero_gpt()
+        kv_monitor_thread, kv_stop_event = start_kvcache_monitoring()
+        # run_zero_gpt()
+        testcase()
     finally:
         stop_cpu_monitoring(cpu_monitor_thread, cpu_stop_event)
         stop_gpu_monitoring(gpu_monitor_thread, gpu_stop_event)
+        stop_kvcache_monitoring(kv_monitor_thread, kv_stop_event)
 
 
 def without_monitor():
-    run_zero_gpt()
+    testcase()
 
-def thread_run():
-    tool_functions = [t.func for t in tools]
-    function_map = create_function_name_map(tool_functions)
-    scheduler = SerialAliveScheduler(MODEL_MAP, function_map)
-    scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation', 'image_classification'])
-    simulate_requests(2, 5)
+def testcase():
+    case = 2
+    rate = 5
+    num_requests = 5
+    intervals = generate_intervals(rate, num_requests)
+    openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
+    task_list = [100, 101, 102, 111, 175]
+    batch1 = [100, 101]
+    batch2 = [ 111, 175, 102]
+    # task_list = [101]
+    bp1 = [openagi.get_task_prompt_from_index(i) for i in batch1]
+    bp2 = [openagi.get_task_prompt_from_index(i) for i in batch2]
+    prompts = bp1 + bp2
+
+    # case 1
+    # seq_request(num_requests, prompts)
+    if case == 1:
+        seq_request(num_requests, prompts)
+    elif case == 3:
+        simulate_requests(num_requests, 3, prompts)
+    else:
+        # simulate_requests(len(bp1), 0.1,  bp1)
+        # simulate_requests(len(bp2), 0.1,  bp2)
+        simulate_requests(len(task_list), 0.1,  prompts)
+
+
+
+def test_datasets():
+    openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
+    task_list = [100, 101, 102, 111, 175]
+    for task in task_list:
+        print(f"task_{task}: {openagi.get_task_prompt_from_index(task)}")
+
 
 if __name__ == '__main__':
     setup_logger(log_level = logging.INFO)
-    thread_run()
+    tool_functions = [t.func for t in tools]
+    function_map = create_function_name_map(tool_functions)
+    scheduler = SerialAliveScheduler(MODEL_MAP, function_map)
+    scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation', 'object_detection', 'image_classification', 'fill_mask', 'visual_question_answering', 'text_summarization'])
+    with_monitor()
+    # without_monitor()
+    # test_datasets()
+    logging.info(f"Tools: {tool_registry.get_counter_list()}")
 

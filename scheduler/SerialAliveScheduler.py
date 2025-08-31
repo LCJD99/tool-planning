@@ -7,21 +7,21 @@ from agent.registry import tool_registry, get_tool, register_tool
 
 
 class SerialAliveScheduler(BaseScheduler):
-    def __init__(self, model_map: Dict[str, Any], tools_map: Dict[str, Any]):
+    def __init__(self, model_map: Dict[str, Any], tools_map: Dict[str, Any], session_id: str = "session_unknown"):
         """
         Initialize the SerialAliveScheduler.
-        
+
         Args:
             model_map: Dictionary mapping tool names to model classes
             tools_map: Dictionary mapping function names to callable functions
         """
-        super().__init__(model_map, tools_map)
+        super().__init__(model_map, tools_map, session_id)
         self.execution_lock = threading.Lock()  # Lock for task execution
-        
+
     def manual_preload(self, tool_names: List[str]) -> None:
         """
         Preload multiple tools into memory.
-        
+
         Args:
             tool_names: List of tool names to preload
         """
@@ -55,11 +55,14 @@ class SerialAliveScheduler(BaseScheduler):
                 # Load the tool if not already loaded
                 tool_registry.load(tool_name)
 
+                tool_registry.counter_add(tool_name)
+
                 # Execute the tool
                 logging.info(f"Executing tool_{idx}: {tool_name} with args: {tool_args}")
                 #TODO: state manager
 
                 tool_result = self._execute_tool(tool_name, tool_args)
+                tool_registry.swap(tool_name)
 
                 # Check if there was an error in tool execution
                 if isinstance(tool_result, dict) and "error" in tool_result:

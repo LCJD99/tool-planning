@@ -44,8 +44,6 @@ class VisualQuestionAnsweringModel(BaseModel):
             if image.mode != "RGB":
                 image = image.convert(mode="RGB")
 
-            # Prepare inputs
-            breakpoint()
             inputs = self.processor(images=image, text=question, return_tensors="pt").to(self.device)
 
             # Generate answer
