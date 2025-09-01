@@ -35,7 +35,7 @@ import os
 def record_e2e_time(batch_id: int, batch_size: int, start_time: float, end_time: float, task_ids: str) -> None:
     """
     Record end-to-end execution time of a batch to a CSV file.
-    
+
     Args:
         batch_id: ID of the batch
         batch_size: Number of threads executing simultaneously in the batch
@@ -45,15 +45,15 @@ def record_e2e_time(batch_id: int, batch_size: int, start_time: float, end_time:
     """
     csv_path = os.path.join(os.path.dirname(__file__), "e2e_time.csv")
     file_exists = os.path.isfile(csv_path)
-    
+
     with open(csv_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         if not file_exists:
             writer.writerow(['batch_id', 'batch_size', 'start_time', 'end_time', 'execution_time', 'task_ids'])
-        
+
         execution_time = end_time - start_time
         writer.writerow([batch_id, batch_size, start_time, end_time, execution_time, task_ids])
-    
+
     logging.info(f"Recorded execution time for batch {batch_id}: {execution_time:.4f} seconds")
 
 
@@ -259,14 +259,14 @@ def seq_request(num_requests: int, prompts: List, batch_size: int = 1):
     Execute requests in batches with the specified batch size.
     Each batch of requests executes in parallel, and the next batch starts only after
     all requests in the current batch have completed.
-    
+
     Args:
         num_requests: Total number of requests to process
         prompts: List of prompts to use for requests
         batch_size: Number of concurrent requests per batch
     """
     result_queue = Queue()
-    
+
     # Process requests in batches
     for batch_start in range(0, num_requests, batch_size):
         batch_end = min(batch_start + batch_size, num_requests)
@@ -274,13 +274,13 @@ def seq_request(num_requests: int, prompts: List, batch_size: int = 1):
         batch_id = batch_start // batch_size + 1
         batch_start_time = time.time()
         task_ids = []
-        
+
         logging.info(f"Starting batch {batch_id}, requests {batch_start+1}-{batch_end}/{num_requests}")
-        
+
         # Start all threads in this batch
         for i in range(batch_start, batch_end):
             logging.info(f"Starting request {i+1}/{num_requests}")
-            
+
             # Create and start a thread for this request
             thread = threading.Thread(
                 target=process_request,
@@ -290,23 +290,23 @@ def seq_request(num_requests: int, prompts: List, batch_size: int = 1):
             task_id = f"task_{prompts[i % len(prompts)].split(',')[0][:20]}"
             task_ids.append(task_id)
             batch_threads.append((thread, i))
-        
+
         # Wait for all threads in this batch to complete
         for thread, i in batch_threads:
             thread.join()
-        
+
         # Process results from this batch
         for _ in range(batch_end - batch_start):
             session_id, response = result_queue.get()
             logging.info(f"Result from {session_id}: {response[:100]}...")
-        
+
         batch_end_time = time.time()
         batch_duration = batch_end_time - batch_start_time
-        
+
         # Record execution time for the entire batch
         task_ids_str = ",".join(task_ids)
         record_e2e_time(batch_id, batch_size, batch_start_time, batch_end_time, task_ids_str)
-        
+
         logging.info(f"Completed batch {batch_id} in {batch_duration:.2f} seconds")
 
 def simulate_requests(num_requests: int, interval: float, prompts):
@@ -355,9 +355,9 @@ def without_monitor():
     testcase()
 
 def testcase():
-    case = 2
+    case = 1
     rate = 5
-    num_requests = 5
+    num_requests = 10
     intervals = generate_intervals(rate, num_requests)
     openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
     task_list = [100, 101, 102, 111, 175]
@@ -371,9 +371,10 @@ def testcase():
     # case 1 - batch execution with configurable batch_size
     if case == 1:
         # Execute requests in batches of 2
-        batch_size = 2
-        logging.info(f"Running seq_request with batch_size={batch_size}")
-        seq_request(num_requests, prompts, batch_size=batch_size)
+        batch_sizes = [1, 2, 3]
+        for batch_size in batch_sizes:
+            logging.info(f"Running seq_request with batch_size={batch_size}")
+            seq_request(num_requests * batch_size, prompts, batch_size=batch_size)
     elif case == 3:
         simulate_requests(num_requests, 3, prompts)
     else:
