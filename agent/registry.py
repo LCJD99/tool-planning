@@ -33,11 +33,12 @@ class ToolRegistry:
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
-                cls._instance._counter = {}
-                cls._instance._tools = {}
-                cls._instance._state = {}
-                cls._instance._locks = {}  # Tool-specific locks
+                cls._instance._counter = {}  # Usage counter for analytics
+                cls._instance._tools = {}    # Mapping from tool name to instance
+                cls._instance._state = {}    # Current state of each tool (DISK/CPU/GPU)
+                cls._instance._locks = {}    # Tool-specific locks
                 cls._instance._global_lock = threading.RLock()  # Global registry lock
+                cls._instance._ref_count = {}  # Reference counting for active tool usage
         return cls._instance
 
     def register(self, tool_name: str, tool_instance: BaseModel) -> None:
@@ -205,6 +206,12 @@ class ToolRegistry:
                     # Check state again after acquiring the lock
                     with self._global_lock:
                         if self._state[name] != ModelWeightState.CPU:
+                            # If tool is already in GPU, just increment reference count
+                            if self._state[name] == ModelWeightState.GPU:
+                                if name not in self._ref_count:
+                                    self._ref_count[name] = 0
+                                self._ref_count[name] += 1
+                                logging.info(f"Tool '{name}' already in GPU, incremented reference count to {self._ref_count[name]}")
                             continue
 
                     if hasattr(tool, 'load') and callable(tool.load):
@@ -212,8 +219,11 @@ class ToolRegistry:
 
                         with self._global_lock:
                             self._state[name] = ModelWeightState.GPU
+                            if name not in self._ref_count:
+                                self._ref_count[name] = 0
+                            self._ref_count[name] += 1
 
-                        logging.info(f"Tool '{name}' loaded into GPU memory.")
+                        logging.info(f"Tool '{name}' loaded into GPU memory. Reference count: {self._ref_count[name]}")
         else:
             # For a specific tool, first check with the global lock
             with self._global_lock:
@@ -221,7 +231,14 @@ class ToolRegistry:
                     logging.warning(f"Tool '{tool_name}' not found in registry.")
                     return
 
-                if self._state[tool_name] != ModelWeightState.CPU:
+                if self._state[tool_name] == ModelWeightState.GPU:
+                    # If already in GPU, just increment reference count
+                    if tool_name not in self._ref_count:
+                        self._ref_count[tool_name] = 0
+                    self._ref_count[tool_name] += 1
+                    logging.info(f"Tool '{tool_name}' already in GPU, incremented reference count to {self._ref_count[tool_name]}")
+                    return
+                elif self._state[tool_name] != ModelWeightState.CPU:
                     logging.info(f"Tool '{tool_name}' not in CPU(but in {self._state[tool_name]}) , cannot load to GPU")
                     return
 
@@ -234,7 +251,14 @@ class ToolRegistry:
             with tool_lock:
                 # Check state again after acquiring the lock
                 with self._global_lock:
-                    if self._state[tool_name] != ModelWeightState.CPU:
+                    if self._state[tool_name] == ModelWeightState.GPU:
+                        # Double check if state changed while waiting for lock
+                        if tool_name not in self._ref_count:
+                            self._ref_count[tool_name] = 0
+                        self._ref_count[tool_name] += 1
+                        logging.info(f"Tool '{tool_name}' already in GPU, incremented reference count to {self._ref_count[tool_name]}")
+                        return
+                    elif self._state[tool_name] != ModelWeightState.CPU:
                         return
 
                 if hasattr(tool, 'load') and callable(tool.load):
@@ -242,8 +266,11 @@ class ToolRegistry:
 
                     with self._global_lock:
                         self._state[tool_name] = ModelWeightState.GPU
+                        if tool_name not in self._ref_count:
+                            self._ref_count[tool_name] = 0
+                        self._ref_count[tool_name] += 1
 
-                    logging.info(f"Tool '{tool_name}' loaded into GPU memory.")
+                    logging.info(f"Tool '{tool_name}' loaded into GPU memory. Reference count: {self._ref_count[tool_name]}")
 
     def counter_add(self, tool_name: str) -> None:
         """
@@ -260,6 +287,9 @@ class ToolRegistry:
     def swap(self, tool_name: Optional[str] = None) -> None:
         """
         Swap tool instances from GPU to CPU memory.
+        
+        This method decrements the reference count for a tool and only
+        actually swaps the model when the reference count reaches zero.
 
         Args:
             tool_name: The name of the tool to swap, or None to swap all
@@ -279,10 +309,20 @@ class ToolRegistry:
 
                 # Use the tool-specific lock for swapping
                 with tool_lock:
-                    # Check state again after acquiring the lock
+                    # Check state and reference count
                     with self._global_lock:
                         if self._state[name] != ModelWeightState.GPU:
                             continue
+                            
+                        # Decrement reference count
+                        if name in self._ref_count and self._ref_count[name] > 0:
+                            self._ref_count[name] -= 1
+                            logging.info(f"Decremented reference count for tool '{name}' to {self._ref_count[name]}")
+                            
+                            # Only swap if reference count reaches zero
+                            if self._ref_count[name] > 0:
+                                logging.info(f"Tool '{name}' still in use by {self._ref_count[name]} other processes, not swapping.")
+                                continue
 
                     if hasattr(tool, 'swap') and callable(tool.swap):
                         tool.swap()
@@ -290,7 +330,7 @@ class ToolRegistry:
                         with self._global_lock:
                             self._state[name] = ModelWeightState.CPU
 
-                        logging.info(f"Tool '{name}' swapped from GPU to CPU memory.")
+                        logging.info(f"Tool '{name}' swapped from GPU to CPU memory, no more active users.")
         else:
             # For a specific tool, first check with the global lock
             with self._global_lock:
@@ -301,6 +341,16 @@ class ToolRegistry:
                 if self._state[tool_name] != ModelWeightState.GPU:
                     logging.info(f"Tool '{tool_name}' not in GPU state, cannot swap to CPU.")
                     return
+                    
+                # Decrement reference count
+                if tool_name in self._ref_count and self._ref_count[tool_name] > 0:
+                    self._ref_count[tool_name] -= 1
+                    logging.info(f"Decremented reference count for tool '{tool_name}' to {self._ref_count[tool_name]}")
+                    
+                    # Only proceed with swap if reference count is zero
+                    if self._ref_count[tool_name] > 0:
+                        logging.info(f"Tool '{tool_name}' still in use by {self._ref_count[tool_name]} other processes, not swapping.")
+                        return
 
                 if tool_name not in self._locks:
                     self._locks[tool_name] = threading.RLock()
@@ -309,9 +359,14 @@ class ToolRegistry:
 
             # Then use the tool-specific lock for the swap operation
             with tool_lock:
-                # Check state again after acquiring the lock
+                # Double check state and reference count after acquiring the lock
                 with self._global_lock:
                     if self._state[tool_name] != ModelWeightState.GPU:
+                        return
+                    
+                    # Double check reference count
+                    if tool_name in self._ref_count and self._ref_count[tool_name] > 0:
+                        logging.info(f"Tool '{tool_name}' reference count changed while waiting for lock, not swapping.")
                         return
 
                 if hasattr(tool, 'swap') and callable(tool.swap):
@@ -320,14 +375,15 @@ class ToolRegistry:
                     with self._global_lock:
                         self._state[tool_name] = ModelWeightState.CPU
 
-                    logging.info(f"Tool '{tool_name}' swapped from GPU to CPU memory.")
+                    logging.info(f"Tool '{tool_name}' swapped from GPU to CPU memory, no more active users.")
 
-    def discord(self, tool_name: Optional[str] = None) -> None:
+    def discord(self, tool_name: Optional[str] = None, force: bool = False) -> None:
         """
         Clear tool instances from the registry.
 
         Args:
             tool_name: The name of the tool to clear, or None to clear all
+            force: If True, forcibly clears the tool regardless of reference count
         """
         if tool_name is None:
             # When clearing all tools, use the global lock to read the tool list
@@ -344,6 +400,15 @@ class ToolRegistry:
 
                 # Use the tool-specific lock for discord
                 with tool_lock:
+                    # Check reference count unless force=True
+                    with self._global_lock:
+                        if not force and name in self._ref_count and self._ref_count[name] > 0:
+                            logging.warning(f"Tool '{name}' still in use by {self._ref_count[name]} processes, not clearing.")
+                            continue
+                        
+                        # Reset reference count
+                        self._ref_count[name] = 0
+
                     if hasattr(tool, 'discord') and callable(tool.discord):
                         tool.discord()
 
@@ -360,6 +425,11 @@ class ToolRegistry:
                     logging.warning(f"Tool '{tool_name}' not found in registry.")
                     return
 
+                # Check reference count unless force=True
+                if not force and tool_name in self._ref_count and self._ref_count[tool_name] > 0:
+                    logging.warning(f"Tool '{tool_name}' still in use by {self._ref_count[tool_name]} processes, not clearing.")
+                    return
+
                 if tool_name not in self._locks:
                     self._locks[tool_name] = threading.RLock()
                 tool_lock = self._locks[tool_name]
@@ -367,6 +437,15 @@ class ToolRegistry:
 
             # Then use the tool-specific lock for the discord operation
             with tool_lock:
+                # Double check reference count after acquiring lock
+                with self._global_lock:
+                    if not force and tool_name in self._ref_count and self._ref_count[tool_name] > 0:
+                        logging.warning(f"Tool '{tool_name}' reference count changed while waiting for lock, not clearing.")
+                        return
+                        
+                    # Reset reference count
+                    self._ref_count[tool_name] = 0
+
                 if hasattr(tool, 'discord') and callable(tool.discord):
                     tool.discord()
 
@@ -385,6 +464,18 @@ class ToolRegistry:
         """
         with self._global_lock:
             return self._counter.copy()
+            
+    def get_reference_counts(self) -> Dict[str, int]:
+        """
+        Get the current reference counts for all tools.
+        
+        This is useful for debugging and monitoring which tools are actively being used.
+
+        Returns:
+            Dictionary with tool names as keys and their active reference counts as values
+        """
+        with self._global_lock:
+            return self._ref_count.copy()
 
 
 class LazyToolLoader:
