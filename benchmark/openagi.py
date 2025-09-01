@@ -373,7 +373,7 @@ def testcase():
         # Execute requests in batches of 2
         batch_sizes = [1, 2, 3]
         for batch_size in batch_sizes:
-            logging.info(f"Running seq_request with batch_size={batch_size}")
+            logging.info(f"StageRecord: Running seq_request with batch_size={batch_size}")
             seq_request(num_requests * batch_size, prompts, batch_size=batch_size)
     elif case == 3:
         simulate_requests(num_requests, 3, prompts)
