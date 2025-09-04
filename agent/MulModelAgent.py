@@ -75,7 +75,7 @@ class MulModelAgent:
         self.llm_with_tools = self.llm.bind_tools(tools)
         logging.info(f"Bound {len(tools)} tools to the LLM.")
 
-    def process(self, prompt: str, max_iterations: int = 10, is_cot: bool = True) -> str:
+    def process(self, prompt: str, max_iterations: int = 10, is_cot: bool = False) -> str:
         """
         Process a prompt through the agent, potentially invoking tools in parallel.
 
@@ -88,7 +88,7 @@ class MulModelAgent:
             The final response after all tool executions
         """
         if not is_cot:
-            prompt = f"{prompt}, plan all tool should use in only one iteration"
+            prompt = f"{prompt}, you must plan all tool in only one iteration, and give me in tool_calls in one iteration, so i can execute without interaction"
 
         start_time = time.time()
         response = self._cot_process(prompt, max_iterations)
@@ -132,6 +132,7 @@ class MulModelAgent:
                 # tool_registry.swap()
                 logging.info("No tool calls in LLM response, returning answer")
                 return ai_msg.content
+
 
             # Process tool calls in parallel
             self.scheduler.add_tasks(iteration, ai_msg.tool_calls)

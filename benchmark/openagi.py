@@ -233,7 +233,7 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) 
 
     try:
         # Process the prompt
-        response = agent.process(prompt, max_iterations)
+        response = agent.process(prompt, max_iterations, is_cot = False)
         logging.info(f"Session {session_id} completed successfully, response: {response}")
         return response
     except Exception as e:
@@ -357,7 +357,7 @@ def without_monitor():
 def testcase():
     case = 1
     rate = 5
-    num_requests = 10
+    num_requests = 2
     intervals = generate_intervals(rate, num_requests)
     openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
     task_list = [100, 101, 102, 111, 175]
@@ -371,7 +371,8 @@ def testcase():
     # case 1 - batch execution with configurable batch_size
     if case == 1:
         # Execute requests in batches of 2
-        batch_sizes = [1, 2, 3]
+        # batch_sizes = [1, 2, 3]
+        batch_sizes = [1]
         for batch_size in batch_sizes:
             logging.info(f"StageRecord: Running seq_request with batch_size={batch_size}")
             seq_request(num_requests * batch_size, prompts, batch_size=batch_size)
