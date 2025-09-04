@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional, Union, Callable
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
-from utils.utils import create_function_name_map
+from utils.utils import create_function_name_map, record_timing
 from scheduler.SerialAliveScheduler import SerialAliveScheduler
 from tools.model_map import MODEL_MAP
 from agent.Tools import tools
@@ -75,7 +75,7 @@ class MulModelAgent:
         self.llm_with_tools = self.llm.bind_tools(tools)
         logging.info(f"Bound {len(tools)} tools to the LLM.")
 
-    def process(self, prompt: str, max_iterations: int = 10, is_cot: bool = False) -> str:
+    def process(self, prompt: str, task_type: str, max_iterations: int = 10, is_cot: bool = False) -> str:
         """
         Process a prompt through the agent, potentially invoking tools in parallel.
 
@@ -91,12 +91,12 @@ class MulModelAgent:
             prompt = f"{prompt}, you must plan all tool in only one iteration, and give me in tool_calls in one iteration, so i can execute without interaction"
 
         start_time = time.time()
-        response = self._cot_process(prompt, max_iterations)
+        response = self._cot_process(prompt, task_type, max_iterations)
         duration_time = time.time() - start_time
         logging.info(f"StageRecord: {self.id} finish in {duration_time:.2f}s")
         return response
 
-    def _cot_process(self, prompt: str, max_iterations: int = 10) -> str:
+    def _cot_process(self, prompt: str, task_type: str, max_iterations: int = 10) -> str:
         """
         Process a prompt through the agent, potentially invoking tools.
 
@@ -114,12 +114,21 @@ class MulModelAgent:
         # Preload commonly used tools
         # self.scheduler.manual_preload(['image_super_resolution', 'image_captioning', 'machine_translation'])
 
+        is_request = True
         for iteration in range(max_iterations):
             # Get LLM response
             logging.info(f"StageRecord: {self.id}, LLM round{iteration}")
-
+            if is_request:
+                time0 = time.time()
+            else:
+                time2 = time.time()
             # Run LLM invoke in executor to avoid blocking the event loop
             ai_msg = self.llm_with_tools.invoke(self.messages)
+            if is_request:
+                time1 = time.time()
+                is_request = False
+            else:
+                time3 = time.time()
             self.messages.append(ai_msg)
 
             # Log the current iteration
@@ -131,6 +140,11 @@ class MulModelAgent:
                 # await loop.run_in_executor( None, lambda: tool_registry.swap())
                 # tool_registry.swap()
                 logging.info("No tool calls in LLM response, returning answer")
+                
+                # Record timing data if we have all timing points
+                if not is_request:
+                    record_timing(task_type, time0, time1, time2, time3)
+                
                 return ai_msg.content
 
 

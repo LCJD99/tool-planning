@@ -63,3 +63,54 @@ def generate_intervals(num_requests: int, rate: int) -> List[float]:
     intervals = np.random.exponential(scale=1/rate_per_second, size=num_requests)
     logging.debug(f"Generated {num_requests} intervals with mean: {np.mean(intervals):.2f}s")
     return intervals.tolist()
+
+
+def record_timing(task_type: str, time0: float, time1: float, time2: float, time3: float, csv_path: str = None) -> None:
+    """
+    Record timing data to a CSV file for performance analysis.
+    
+    Args:
+        task_type: The type of task being timed
+        time0: Start time of first LLM call
+        time1: End time of first LLM call
+        time2: Start time of second LLM call
+        time3: End time of second LLM call
+        csv_path: Path to the CSV file (default is latency.csv in project root)
+    """
+    import os
+    import csv
+    import logging
+    
+    if csv_path is None:
+        # Get the project root directory (assuming utils.py is in utils/ directory)
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        csv_path = os.path.join(current_dir, 'latency.csv')
+    
+    # Calculate timing metrics
+    llm_time1 = time1 - time0
+    tools_time = time2 - time1
+    llm_time2 = time3 - time2
+    
+    # Check if file exists and has header
+    file_exists = os.path.isfile(csv_path)
+    
+    try:
+        with open(csv_path, 'a', newline='') as csvfile:
+            fieldnames = ['task_type', 'llm_time1', 'tools_time', 'llm_time2']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            # Write header if file doesn't exist
+            if not file_exists:
+                writer.writeheader()
+            
+            # Write the timing data
+            writer.writerow({
+                'task_type': task_type,
+                'llm_time1': f"{llm_time1:.4f}",
+                'tools_time': f"{tools_time:.4f}",
+                'llm_time2': f"{llm_time2:.4f}"
+            })
+            
+        logging.info(f"Timing data recorded to {csv_path}")
+    except Exception as e:
+        logging.error(f"Error recording timing data: {e}")

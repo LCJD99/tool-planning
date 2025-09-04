@@ -208,7 +208,7 @@ def run_zero_gpt():
 
     logging.info(f"Evaluation results: clips: {np.mean(clips)}, berts: {np.mean(berts)}, image: {np.mean(similairies)}, all: {np.mean(rewards)}")
 
-def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) -> str:
+def create_agent_and_process(prompt: str, session_id: str, max_iterations: int, task_type: str) -> str:
     """
     Create a MulModelAgent instance and process the given prompt.
 
@@ -233,7 +233,7 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) 
 
     try:
         # Process the prompt
-        response = agent.process(prompt, max_iterations, is_cot = False)
+        response = agent.process(prompt, task_type, max_iterations, is_cot = False)
         logging.info(f"Session {session_id} completed successfully, response: {response}")
         return response
     except Exception as e:
@@ -241,7 +241,7 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int) 
         logging.error(error_msg)
         return error_msg
 
-def process_request(prompt: str, session_id: str, max_iterations: int, result_queue: Queue) -> None:
+def process_request(prompt: str, session_id: str, max_iterations: int, result_queue: Queue, task_type: str) -> None:
     """
     Process a request and put the result in the queue.
 
@@ -254,7 +254,7 @@ def process_request(prompt: str, session_id: str, max_iterations: int, result_qu
     result = create_agent_and_process(prompt, session_id, max_iterations)
     result_queue.put((session_id, result))
 
-def seq_request(num_requests: int, prompts: List, batch_size: int = 1):
+def seq_request(num_requests: int, prompts: List, task_type: str, batch_size: int = 1):
     """
     Execute requests in batches with the specified batch size.
     Each batch of requests executes in parallel, and the next batch starts only after
@@ -284,7 +284,7 @@ def seq_request(num_requests: int, prompts: List, batch_size: int = 1):
             # Create and start a thread for this request
             thread = threading.Thread(
                 target=process_request,
-                args=(prompts[i % len(prompts)], f"session_{i}", 20, result_queue)
+                args=(prompts[i % len(prompts)], f"session_{i}", 20, result_queue, task_type)
             )
             thread.start()
             task_id = f"task_{prompts[i % len(prompts)].split(',')[0][:20]}"
@@ -375,7 +375,7 @@ def testcase():
         batch_sizes = [1]
         for batch_size in batch_sizes:
             logging.info(f"StageRecord: Running seq_request with batch_size={batch_size}")
-            seq_request(num_requests * batch_size, prompts, batch_size=batch_size)
+            seq_request(num_requests * batch_size, prompts, f"seq_{batch_size}", batch_size=batch_size)
     elif case == 3:
         simulate_requests(num_requests, 3, prompts)
     else:
