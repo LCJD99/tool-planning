@@ -15,6 +15,7 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
 from utils.utils import create_function_name_map, record_timing
 from scheduler.SerialAliveScheduler import SerialAliveScheduler
+from scheduler.ParallelLastToolsScheduler import ParallelLastToolsScheduler
 from tools.model_map import MODEL_MAP
 from agent.Tools import tools
 from agent.registry import tool_registry
@@ -35,7 +36,7 @@ class MulModelAgent:
 
     def __init__(self, model: str = "./qwen2.5", api_key: str = "fake api",
                  base_url: str = "http://localhost:8000/v1", temperature: float = 0.0,
-                 id: int = 0):
+                 id: int = 0, scheduler_type: str = "serial"):
         """
         Initialize the Multi-Model Agent.
 
@@ -56,11 +57,18 @@ class MulModelAgent:
         tool_functions = [t.func for t in tools]
         self.function_map = create_function_name_map(tool_functions)
 
-        # Create the async scheduler
-        self.scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map, id)
+        # Create the scheduler based on scheduler_type
+        if scheduler_type == "serial":
+            self.scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map, id)
+        elif scheduler_type == "parallel":
+            self.scheduler = ParallelLastToolsScheduler(MODEL_MAP, self.function_map, id)
+        else:
+            logging.warning(f"Unknown scheduler type '{scheduler_type}', falling back to SerialAliveScheduler")
+            self.scheduler = SerialAliveScheduler(MODEL_MAP, self.function_map, id)
+            
         self.id = id
 
-        logging.info(f"Initialized async agent with {len(tools)} tools")
+        logging.info(f"Initialized async agent with {len(tools)} tools and {scheduler_type} scheduler")
 
     def bind_tools_to_model(self, tools) -> None:
         """

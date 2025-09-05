@@ -222,13 +222,17 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int, 
     """
     logging.info(f"Creating agent for session {session_id}")
 
+    parts = task_type.split('_')
+    scheduler_type = parts[0]
+
     # Create a new agent instance for this request
     agent = MulModelAgent(
         model="./qwen2.5",
         api_key="fake api",
         base_url="http://localhost:8000/v1",
         temperature=0.0,
-        id = session_id
+        id = session_id,
+        scheduler_type=scheduler_type
     )
 
     try:
