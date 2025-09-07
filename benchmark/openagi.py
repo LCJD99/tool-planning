@@ -3,6 +3,7 @@ import os
 from torch.utils.data import DataLoader
 import torch
 from .agi_utils import *
+from datetime import datetime
 import torch
 import openai
 import numpy as np
@@ -258,13 +259,17 @@ def record_request_timing(session_id: str, type_name: str, workload: str, start_
     """
     csv_path = os.path.join(os.path.dirname(__file__), "request_timing.csv")
     file_exists = os.path.isfile(csv_path)
+    
+    # Convert timestamps to readable format
+    start_time_formatted = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    end_time_formatted = datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
     with open(csv_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         if not file_exists:
             writer.writerow(['session_id', 'type', 'workload', 'start_time', 'end_time'])
 
-        writer.writerow([session_id, type_name, workload, start_time, end_time])
+        writer.writerow([session_id, type_name, workload, start_time_formatted, end_time_formatted])
 
     logging.info(f"Recorded timing for session {session_id}: type={type_name}, workload={workload}")
 
