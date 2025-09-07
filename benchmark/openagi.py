@@ -245,6 +245,30 @@ def create_agent_and_process(prompt: str, session_id: str, max_iterations: int, 
         logging.error(error_msg)
         return error_msg
 
+def record_request_timing(session_id: str, type_name: str, workload: str, start_time: float, end_time: float) -> None:
+    """
+    Record request timing data to a CSV file.
+
+    Args:
+        session_id: Session identifier
+        type_name: Type extracted from task_type (e.g., "serial", "parallel")
+        workload: Workload extracted from task_type (e.g., "1", "2")
+        start_time: Request start time
+        end_time: Request end time
+    """
+    csv_path = os.path.join(os.path.dirname(__file__), "request_timing.csv")
+    file_exists = os.path.isfile(csv_path)
+
+    with open(csv_path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(['session_id', 'type', 'workload', 'start_time', 'end_time'])
+
+        writer.writerow([session_id, type_name, workload, start_time, end_time])
+
+    logging.info(f"Recorded timing for session {session_id}: type={type_name}, workload={workload}")
+
+
 def process_request(prompt: str, session_id: str, max_iterations: int, result_queue: Queue, task_type: str) -> None:
     """
     Process a request and put the result in the queue.
@@ -254,8 +278,21 @@ def process_request(prompt: str, session_id: str, max_iterations: int, result_qu
         session_id: Unique identifier for the session
         max_iterations: Maximum number of iterations for the agent
         result_queue: Queue to store the result
+        task_type: Task type in format "type_workload" (e.g., "serial_1")
     """
+    start_time = time.time()
+    
+    # Parse task_type to extract type and workload
+    parts = task_type.split('_')
+    type_name = parts[0] if len(parts) > 0 else ""
+    workload = parts[1] if len(parts) > 1 else ""
+    
     result = create_agent_and_process(prompt, session_id, max_iterations, task_type)
+    end_time = time.time()
+    
+    # Record timing data to CSV
+    record_request_timing(session_id, type_name, workload, start_time, end_time)
+    
     result_queue.put((session_id, result))
 
 def seq_request(num_requests: int, prompts: List, task_type: str, batch_size: int = 1):
