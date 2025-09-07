@@ -255,7 +255,7 @@ def process_request(prompt: str, session_id: str, max_iterations: int, result_qu
         max_iterations: Maximum number of iterations for the agent
         result_queue: Queue to store the result
     """
-    result = create_agent_and_process(prompt, session_id, max_iterations)
+    result = create_agent_and_process(prompt, session_id, max_iterations, task_type)
     result_queue.put((session_id, result))
 
 def seq_request(num_requests: int, prompts: List, task_type: str, batch_size: int = 1):
@@ -361,7 +361,7 @@ def without_monitor():
 def testcase():
     case = 1
     rate = 5
-    num_requests = 2
+    num_requests = 10
     intervals = generate_intervals(rate, num_requests)
     openagi = OpenAGI(data_path="/home/zhangjingzhou/tool-planning/datasets/openagi/", task_set=[27], eval_device="cuda", batch_size=1)
     task_list = [100, 101, 102, 111, 175]
@@ -374,12 +374,16 @@ def testcase():
 
     # case 1 - batch execution with configurable batch_size
     if case == 1:
-        # Execute requests in batches of 2
-        # batch_sizes = [1, 2, 3]
-        batch_sizes = [1]
-        for batch_size in batch_sizes:
-            logging.info(f"StageRecord: Running seq_request with batch_size={batch_size}")
-            seq_request(num_requests * batch_size, prompts, f"seq_{batch_size}", batch_size=batch_size)
+        # Execute requests in batches of 3
+        # batch_sizes = [1, 2, 3, 4, 5]
+        batch_sizes = [1, 3]
+        execute_types = ['serial', 'parallel']
+        # execute_types = ['parallel']
+        for execute_type in execute_types:
+            for batch_size in batch_sizes:
+                logging.info(f"StageRecord: Running {execute_type}, {batch_size}")
+                seq_request(num_requests * batch_size, prompts, f"{execute_type}_{batch_size}", batch_size=batch_size)
+            # seq_request(num_requests * batch_size, prompts, f"serial_{batch_size}", batch_size=batch_size)
     elif case == 3:
         simulate_requests(num_requests, 3, prompts)
     else:

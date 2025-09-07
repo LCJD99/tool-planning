@@ -45,6 +45,7 @@ class SerialAliveScheduler(BaseScheduler):
             messages = []
             has_tool_execution_error = False
 
+            logging.info(f"tools number = {len(tools)}")
             for idx, tool_call in enumerate(tools):
                 tool_name = tool_call['name']
                 tool_args = tool_call['args']
