@@ -9,6 +9,7 @@ It includes thread safety mechanisms for concurrent access.
 from typing import Dict, Any, Optional, Type
 import logging
 import threading
+import time
 from tools.models.BaseModel import BaseModel
 from enum import Enum
 from tools.model_map import MODEL_MAP
@@ -39,6 +40,10 @@ class ToolRegistry:
                 cls._instance._locks = {}    # Tool-specific locks
                 cls._instance._global_lock = threading.RLock()  # Global registry lock
                 cls._instance._ref_count = {}  # Reference counting for active tool usage
+                cls._instance._oom_count = {}  # OOM counter for each tool
+                cls._instance._oom_waiting_lock = threading.Lock()  # Lock for OOM waiting mechanism
+                cls._instance._oom_waiting_tool = None  # Tool currently causing OOM and waiting for retry
+                cls._instance._oom_retry_event = threading.Event()  # Event to signal when to retry OOM tool
         return cls._instance
 
     def register(self, tool_name: str, tool_instance: BaseModel) -> None:
@@ -104,6 +109,71 @@ class ToolRegistry:
             if tool_name not in self._locks:
                 self._locks[tool_name] = threading.RLock()
             logging.info(f"Tool '{tool_name}' registered for lazy loading.")
+
+    def _is_oom_error(self, exception: Exception) -> bool:
+        """
+        Check if an exception is an Out of Memory error.
+        
+        Args:
+            exception: The exception to check
+            
+        Returns:
+            True if it's an OOM error, False otherwise
+        """
+        error_message = str(exception).lower()
+        oom_keywords = [
+            'out of memory',
+            'cuda out of memory',
+            'cudnn_status_not_enough_workspace',
+            'cuda error: out of memory',
+            'runtime error: cuda out of memory',
+            'torch.cuda.outofmemoryerror',
+            'outofmemoryerror'
+        ]
+        return any(keyword in error_message for keyword in oom_keywords)
+
+    def _wait_for_oom_retry(self, tool_name: str) -> None:
+        """
+        Wait for OOM retry mechanism when another tool is causing OOM.
+        
+        Args:
+            tool_name: Name of the tool requesting to load
+        """
+        with self._oom_waiting_lock:
+            if self._oom_waiting_tool is not None and self._oom_waiting_tool != tool_name:
+                logging.info(f"Tool '{tool_name}' waiting for OOM tool '{self._oom_waiting_tool}' to complete")
+                waiting_tool = self._oom_waiting_tool
+            else:
+                return
+                
+        # Wait outside the lock to avoid deadlock
+        if waiting_tool is not None:
+            self._oom_retry_event.wait()
+
+    def _set_oom_waiting_tool(self, tool_name: str) -> None:
+        """
+        Set the tool that is currently waiting for OOM retry.
+        
+        Args:
+            tool_name: Name of the tool causing OOM
+        """
+        with self._oom_waiting_lock:
+            self._oom_waiting_tool = tool_name
+            self._oom_retry_event.clear()
+            logging.info(f"Set OOM waiting tool to '{tool_name}'")
+
+    def _clear_oom_waiting_tool(self, tool_name: str) -> None:
+        """
+        Clear the OOM waiting tool and signal other threads to continue.
+        
+        Args:
+            tool_name: Name of the tool that was causing OOM
+        """
+        with self._oom_waiting_lock:
+            if self._oom_waiting_tool == tool_name:
+                self._oom_waiting_tool = None
+                self._oom_retry_event.set()
+                logging.info(f"Cleared OOM waiting tool '{tool_name}', signaling other threads")
 
     def list_tools(self) -> Dict[str, Any]:
         """
@@ -181,12 +251,14 @@ class ToolRegistry:
 
 
 
-    def load(self, tool_name: Optional[str] = None) -> None:
+    def load(self, tool_name: Optional[str] = None, max_retries: int = 5, retry_delay: float = 1.0) -> None:
         """
-        Load tool instances into gpu memory.
+        Load tool instances into gpu memory with OOM handling.
 
         Args:
             tool_name: The name of the tool to load, or None to load all
+            max_retries: Maximum number of retries for OOM recovery
+            retry_delay: Delay between retries in seconds
         """
         if tool_name is None:
             # When loading all tools, use the global lock to read the tool list
@@ -195,36 +267,11 @@ class ToolRegistry:
                 tool_items = list(self._tools.items())
 
             for name, tool in tool_items:
-                # Get the tool-specific lock
-                with self._global_lock:
-                    if name not in self._locks:
-                        self._locks[name] = threading.RLock()
-                    tool_lock = self._locks[name]
-
-                # Use the tool-specific lock for loading
-                with tool_lock:
-                    # Check state again after acquiring the lock
-                    with self._global_lock:
-                        if self._state[name] != ModelWeightState.CPU:
-                            # If tool is already in GPU, just increment reference count
-                            if self._state[name] == ModelWeightState.GPU:
-                                if name not in self._ref_count:
-                                    self._ref_count[name] = 0
-                                self._ref_count[name] += 1
-                                logging.info(f"Tool '{name}' already in GPU, incremented reference count to {self._ref_count[name]}")
-                            continue
-
-                    if hasattr(tool, 'load') and callable(tool.load):
-                        tool.load()
-
-                        with self._global_lock:
-                            self._state[name] = ModelWeightState.GPU
-                            if name not in self._ref_count:
-                                self._ref_count[name] = 0
-                            self._ref_count[name] += 1
-
-                        logging.info(f"Tool '{name}' loaded into GPU memory. Reference count: {self._ref_count[name]}")
+                self.load(name, max_retries, retry_delay)  # Recursive call for each tool
         else:
+            # Wait if another tool is currently handling OOM
+            self._wait_for_oom_retry(tool_name)
+            
             # For a specific tool, first check with the global lock
             with self._global_lock:
                 if tool_name not in self._tools:
@@ -239,7 +286,7 @@ class ToolRegistry:
                     logging.info(f"Tool '{tool_name}' already in GPU, incremented reference count to {self._ref_count[tool_name]}")
                     return
                 elif self._state[tool_name] != ModelWeightState.CPU:
-                    logging.info(f"Tool '{tool_name}' not in CPU(but in {self._state[tool_name]}) , cannot load to GPU")
+                    logging.info(f"Tool '{tool_name}' not in CPU (but in {self._state[tool_name]}), cannot load to GPU")
                     return
 
                 if tool_name not in self._locks:
@@ -262,15 +309,85 @@ class ToolRegistry:
                         return
 
                 if hasattr(tool, 'load') and callable(tool.load):
-                    tool.load()
+                    # Attempt to load with OOM handling
+                    retry_count = 0
+                    while retry_count < max_retries:
+                        try:
+                            tool.load()
 
-                    with self._global_lock:
-                        self._state[tool_name] = ModelWeightState.GPU
-                        if tool_name not in self._ref_count:
-                            self._ref_count[tool_name] = 0
-                        self._ref_count[tool_name] += 1
+                            with self._global_lock:
+                                self._state[tool_name] = ModelWeightState.GPU
+                                if tool_name not in self._ref_count:
+                                    self._ref_count[tool_name] = 0
+                                self._ref_count[tool_name] += 1
 
-                    logging.info(f"Tool '{tool_name}' loaded into GPU memory. Reference count: {self._ref_count[tool_name]}")
+                            logging.info(f"Tool '{tool_name}' loaded into GPU memory. Reference count: {self._ref_count[tool_name]}")
+                            
+                            # Clear OOM waiting if this tool was causing it
+                            self._clear_oom_waiting_tool(tool_name)
+                            return
+                            
+                        except Exception as e:
+                            if self._is_oom_error(e):
+                                retry_count += 1
+                                
+                                # Record OOM occurrence
+                                with self._global_lock:
+                                    if tool_name not in self._oom_count:
+                                        self._oom_count[tool_name] = 0
+                                    self._oom_count[tool_name] += 1
+                                
+                                logging.warning(f"OOM error loading tool '{tool_name}' (attempt {retry_count}/{max_retries}): {e}")
+                                logging.info(f"Total OOM count for '{tool_name}': {self._oom_count[tool_name]}")
+                                
+                                if retry_count < max_retries:
+                                    # Set this tool as the OOM waiting tool to block other loads
+                                    self._set_oom_waiting_tool(tool_name)
+                                    
+                                    # Try to swap some tools to free memory
+                                    logging.info(f"Attempting to free GPU memory by swapping tools...")
+                                    self._attempt_memory_recovery()
+                                    
+                                    # Wait for either timeout or memory availability signal
+                                    logging.info(f"Waiting {retry_delay}s before retry or for memory to become available...")
+                                    
+                                    # Wait for either the timeout or a memory availability signal
+                                    self._oom_retry_event.wait(timeout=retry_delay)
+                                    
+                                    # Clear the event for the next iteration
+                                    with self._oom_waiting_lock:
+                                        self._oom_retry_event.clear()
+                                else:
+                                    logging.error(f"Failed to load tool '{tool_name}' after {max_retries} attempts due to OOM")
+                                    self._clear_oom_waiting_tool(tool_name)
+                                    raise e
+                            else:
+                                # Non-OOM error, re-raise immediately
+                                logging.error(f"Error loading tool '{tool_name}': {e}")
+                                raise e
+                else:
+                    logging.error(f"Tool '{tool_name}' does not implement load method.")
+
+    def _attempt_memory_recovery(self) -> None:
+        """
+        Attempt to recover GPU memory by swapping tools that have zero reference count.
+        """
+        with self._global_lock:
+            tools_to_swap = []
+            for name, state in self._state.items():
+                if (state == ModelWeightState.GPU and 
+                    (name not in self._ref_count or self._ref_count[name] == 0)):
+                    tools_to_swap.append(name)
+            
+        if tools_to_swap:
+            logging.info(f"Attempting to swap {len(tools_to_swap)} tools to free GPU memory: {tools_to_swap}")
+            for tool_name in tools_to_swap:
+                try:
+                    self.swap(tool_name)
+                except Exception as e:
+                    logging.warning(f"Failed to swap tool '{tool_name}': {e}")
+        else:
+            logging.info("No tools available for swapping to free GPU memory")
 
     def counter_add(self, tool_name: str) -> None:
         """
@@ -331,6 +448,9 @@ class ToolRegistry:
                             self._state[name] = ModelWeightState.CPU
 
                         logging.info(f"Tool '{name}' swapped from GPU to CPU memory, no more active users.")
+                        
+                        # Signal OOM waiting tools that memory may be available
+                        self._signal_memory_available()
         else:
             # For a specific tool, first check with the global lock
             with self._global_lock:
@@ -376,6 +496,9 @@ class ToolRegistry:
                         self._state[tool_name] = ModelWeightState.CPU
 
                     logging.info(f"Tool '{tool_name}' swapped from GPU to CPU memory, no more active users.")
+                    
+                    # Signal OOM waiting tools that memory may be available
+                    self._signal_memory_available()
 
     def discord(self, tool_name: Optional[str] = None, force: bool = False) -> None:
         """
@@ -455,6 +578,20 @@ class ToolRegistry:
                     logging.info(f"Tool '{tool_name}' cleared to disk.")
 
 
+    def _signal_memory_available(self) -> None:
+        """
+        Signal that GPU memory may be available after a swap operation.
+        This can help OOM waiting tools to retry sooner.
+        """
+        # We don't clear the waiting tool here, just set the event briefly
+        # to allow the waiting tool to retry its load operation
+        with self._oom_waiting_lock:
+            if self._oom_waiting_tool is not None:
+                logging.info("Signaling that GPU memory may be available after swap")
+                # Temporarily set the event to allow retry, but don't clear the waiting tool yet
+                self._oom_retry_event.set()
+                # The event will be cleared again when the OOM tool starts its next retry
+
     def get_counter_list(self) -> Dict[str, int]:
         """
         Get the usage counter for all tools.
@@ -476,6 +613,33 @@ class ToolRegistry:
         """
         with self._global_lock:
             return self._ref_count.copy()
+
+    def get_oom_counts(self) -> Dict[str, int]:
+        """
+        Get the OOM (Out of Memory) counts for all tools.
+        
+        This is useful for monitoring which tools frequently encounter memory issues.
+
+        Returns:
+            Dictionary with tool names as keys and their OOM counts as values
+        """
+        with self._global_lock:
+            return self._oom_count.copy()
+
+    def get_oom_status(self) -> Dict[str, Any]:
+        """
+        Get the current OOM status including waiting tool and statistics.
+        
+        Returns:
+            Dictionary containing OOM status information
+        """
+        with self._global_lock:
+            with self._oom_waiting_lock:
+                return {
+                    'waiting_tool': self._oom_waiting_tool,
+                    'oom_counts': self._oom_count.copy(),
+                    'retry_event_set': self._oom_retry_event.is_set()
+                }
 
 
 class LazyToolLoader:
