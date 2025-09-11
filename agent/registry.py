@@ -14,6 +14,13 @@ from tools.models.BaseModel import BaseModel
 from enum import Enum
 from tools.model_map import MODEL_MAP
 
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
 class ModelWeightState(Enum):
     DISK = 0
     CPU = 1
@@ -120,6 +127,17 @@ class ToolRegistry:
         Returns:
             True if it's an OOM error, False otherwise
         """
+        # First, check if it's the specific torch CUDA OOM error
+        if TORCH_AVAILABLE and torch is not None:
+            try:
+                if isinstance(exception, torch.cuda.OutOfMemoryError):
+                    return True
+            except AttributeError:
+                # torch.cuda.OutOfMemoryError might not be available in older versions
+                pass
+        
+        # Fallback to string matching for cases where torch is not available
+        # or for other types of OOM errors
         error_message = str(exception).lower()
         oom_keywords = [
             'out of memory',
@@ -328,7 +346,18 @@ class ToolRegistry:
                             return
                             
                         except Exception as e:
-                            if self._is_oom_error(e):
+                            # Check for CUDA OOM first with specific exception type
+                            is_oom = False
+                            if TORCH_AVAILABLE and torch is not None:
+                                try:
+                                    is_oom = isinstance(e, torch.cuda.OutOfMemoryError)
+                                except AttributeError:
+                                    # Fallback to string-based detection
+                                    is_oom = self._is_oom_error(e)
+                            else:
+                                is_oom = self._is_oom_error(e)
+                            
+                            if is_oom:
                                 retry_count += 1
                                 
                                 # Record OOM occurrence

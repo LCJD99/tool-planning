@@ -12,6 +12,14 @@ from typing import Optional
 from unittest.mock import Mock, patch
 from agent.registry import tool_registry, ToolRegistry, ModelWeightState
 
+# Try to import torch for more realistic OOM simulation
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s')
 
@@ -33,7 +41,19 @@ class MockTool:
         logging.info(f"MockTool {self.name}: load called")
         if self.should_oom and self.current_oom_count < self.oom_count:
             self.current_oom_count += 1
+            
+            # Try to raise the actual torch CUDA OOM error if available
+            if TORCH_AVAILABLE and torch is not None:
+                try:
+                    # Create a realistic CUDA OOM error
+                    if hasattr(torch.cuda, 'OutOfMemoryError'):
+                        raise torch.cuda.OutOfMemoryError(f"CUDA out of memory for {self.name} (attempt {self.current_oom_count})")
+                except AttributeError:
+                    pass
+            
+            # Fallback to generic RuntimeError with OOM message
             raise RuntimeError(f"CUDA out of memory for {self.name} (attempt {self.current_oom_count})")
+            
         self.loaded = True
         logging.info(f"MockTool {self.name}: successfully loaded")
         
@@ -141,13 +161,21 @@ def test_basic_oom_detection():
     """Test basic OOM error detection."""
     registry = ToolRegistry()
     
-    # Test various OOM error messages
+    # Test various OOM error messages and types
     oom_errors = [
         RuntimeError("CUDA out of memory"),
         RuntimeError("RuntimeError: CUDA out of memory. Tried to allocate 2.00 GiB"),
         Exception("torch.cuda.OutOfMemoryError: CUDA out of memory"),
         Exception("OutOfMemoryError: CUDA device ran out of memory"),
     ]
+    
+    # Add torch.cuda.OutOfMemoryError if available
+    if TORCH_AVAILABLE and torch is not None:
+        try:
+            if hasattr(torch.cuda, 'OutOfMemoryError'):
+                oom_errors.append(torch.cuda.OutOfMemoryError("CUDA out of memory: Tried to allocate 1.00 GiB"))
+        except AttributeError:
+            pass
     
     non_oom_errors = [
         RuntimeError("Some other error"),
@@ -160,12 +188,14 @@ def test_basic_oom_detection():
     
     for error in oom_errors:
         is_oom = registry._is_oom_error(error)
-        print(f"'{str(error)[:50]}...' -> OOM: {is_oom}")
+        error_type = type(error).__name__
+        print(f"'{error_type}: {str(error)[:50]}...' -> OOM: {is_oom}")
         assert is_oom, f"Should detect OOM: {error}"
     
     for error in non_oom_errors:
         is_oom = registry._is_oom_error(error)
-        print(f"'{str(error)[:50]}...' -> OOM: {is_oom}")
+        error_type = type(error).__name__
+        print(f"'{error_type}: {str(error)[:50]}...' -> OOM: {is_oom}")
         assert not is_oom, f"Should NOT detect OOM: {error}"
     
     print("✓ OOM detection tests passed!")
