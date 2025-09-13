@@ -670,6 +670,99 @@ class ToolRegistry:
                     'retry_event_set': self._oom_retry_event.is_set()
                 }
 
+    def execute_tool_with_oom_handling(self, tool_name: str, func, *args, **kwargs) -> Any:
+        """
+        Execute a tool function with OOM handling and retry mechanism.
+        
+        This method provides centralized OOM handling for tool execution,
+        including retry logic and coordination with other threads.
+        
+        Args:
+            tool_name: Name of the tool being executed
+            func: The function to execute
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+            
+        Returns:
+            The result of the function execution
+            
+        Raises:
+            Exception: If execution fails after all retries or timeout
+        """
+        max_retry_time = 15.0  # Maximum retry time in seconds
+        retry_interval = 1.0   # Initial retry interval in seconds
+        max_retry_interval = 3.0  # Maximum retry interval
+        
+        start_time = time.time()
+        attempt = 0
+        
+        while True:
+            attempt += 1
+            try:
+                # Wait if another tool is currently handling OOM
+                self._wait_for_oom_retry(tool_name)
+                
+                # Execute the function
+                logging.debug(f"Executing {tool_name}, attempt {attempt}")
+                result = func(*args, **kwargs)
+                
+                # If successful, clear any OOM waiting state for this tool
+                self._clear_oom_waiting_tool(tool_name)
+                return result
+                
+            except Exception as e:
+                elapsed_time = time.time() - start_time
+                
+                # Check if it's an OOM error
+                if self._is_oom_error(e):
+                    # Update OOM statistics
+                    with self._global_lock:
+                        self._oom_count[tool_name] = self._oom_count.get(tool_name, 0) + 1
+                    
+                    logging.warning(f"OOM error in tool '{tool_name}' execution (attempt {attempt}): {str(e)}")
+                    
+                    # Check if we've exceeded the maximum retry time
+                    if elapsed_time >= max_retry_time:
+                        self._clear_oom_waiting_tool(tool_name)
+                        error_msg = f"Tool '{tool_name}' execution failed after {max_retry_time}s of OOM retries. Giving up."
+                        logging.error(error_msg)
+                        raise Exception(error_msg) from e
+                    
+                    # Set this tool as the OOM waiting tool to coordinate with other threads
+                    self._set_oom_waiting_tool(tool_name)
+                    
+                    # Attempt memory recovery
+                    try:
+                        logging.info(f"Attempting memory recovery for OOM in tool '{tool_name}'")
+                        self._attempt_memory_recovery()
+                        
+                        # Signal that memory might be available
+                        self._signal_memory_available()
+                        
+                    except Exception as recovery_error:
+                        logging.warning(f"Memory recovery failed: {str(recovery_error)}")
+                    
+                    # Calculate next retry interval with exponential backoff
+                    remaining_time = max_retry_time - elapsed_time
+                    next_interval = min(retry_interval * (1.5 ** (attempt - 1)), max_retry_interval)
+                    actual_wait = min(next_interval, remaining_time - 0.1)  # Leave some buffer
+                    
+                    if actual_wait > 0:
+                        logging.info(f"Waiting {actual_wait:.1f}s before retrying tool '{tool_name}' (attempt {attempt})")
+                        time.sleep(actual_wait)
+                    else:
+                        # No time left for retry
+                        self._clear_oom_waiting_tool(tool_name)
+                        error_msg = f"Tool '{tool_name}' execution timeout after {max_retry_time}s"
+                        logging.error(error_msg)
+                        raise Exception(error_msg) from e
+                        
+                else:
+                    # Non-OOM error, don't retry
+                    self._clear_oom_waiting_tool(tool_name)
+                    logging.error(f"Non-OOM error in tool '{tool_name}' execution: {str(e)}")
+                    raise e
+
 
 class LazyToolLoader:
     """
@@ -724,3 +817,18 @@ def register_lazy_tool(tool_name: str, tool_class: Type[BaseModel]) -> None:
         tool_class: The tool model class (not instance)
     """
     tool_registry.register_lazy(tool_name, tool_class)
+
+def execute_tool_with_oom_handling(tool_name: str, func, *args, **kwargs) -> Any:
+    """
+    Execute a tool function with OOM handling using the global registry.
+    
+    Args:
+        tool_name: Name of the tool being executed
+        func: The function to execute
+        *args: Positional arguments for the function
+        **kwargs: Keyword arguments for the function
+        
+    Returns:
+        The result of the function execution
+    """
+    return tool_registry.execute_tool_with_oom_handling(tool_name, func, *args, **kwargs)
