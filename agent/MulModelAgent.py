@@ -5,13 +5,9 @@ This class provides a Multi-Model Agent, supporting
 parallel processing of prompts and tool executions using multi-threading.
 """
 
-import json
 import logging
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Any, Optional, Union, Callable
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 from utils.utils import create_function_name_map, record_timing
 from scheduler.SerialAliveScheduler import SerialAliveScheduler
@@ -19,9 +15,7 @@ from scheduler.ParallelLastToolsScheduler import ParallelLastToolsScheduler
 from tools.model_map import MODEL_MAP
 from agent.Tools import tools
 from agent.registry import tool_registry
-import os
 import time
-
 
 class MulModelAgent:
     """
@@ -98,10 +92,8 @@ class MulModelAgent:
         if not is_cot:
             prompt = f"{prompt}, you must plan all tool in only one iteration, and give me in tool_calls in one iteration, so i can execute without interaction"
 
-        start_time = time.time()
         response = self._cot_process(prompt, task_type, max_iterations)
-        duration_time = time.time() - start_time
-        logging.info(f"StageRecord: {self.id} finish in {duration_time:.2f}s")
+        logging.info(f"StageRecord: {self.id} finish")
         return response
 
     def _cot_process(self, prompt: str, task_type: str, max_iterations: int = 10) -> str:
@@ -147,8 +139,6 @@ class MulModelAgent:
                 # Release GPU resources when done
                 # await loop.run_in_executor( None, lambda: tool_registry.swap())
                 # tool_registry.swap()
-                logging.info("No tool calls in LLM response, returning answer")
-                
                 # Record timing data if we have all timing points
                 if not is_request:
                     record_timing(task_type, time0, time1, time2, time3)

@@ -82,9 +82,7 @@ def record_timing(task_type: str, time0: float, time1: float, time2: float, time
     import logging
     
     if csv_path is None:
-        # Get the project root directory (assuming utils.py is in utils/ directory)
-        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        csv_path = os.path.join(current_dir, 'latency.csv')
+        csv_path = 'datas/latency.csv'
     
     # Calculate timing metrics
     llm_time1 = time1 - time0

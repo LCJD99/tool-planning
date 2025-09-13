@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from enum import Enum
-from tools.models import BaseModel
+from tools.models.BaseModel import BaseModel
 import logging
 
 class BaseScheduler():
@@ -33,7 +33,7 @@ class BaseScheduler():
 
     def _execute_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
         """
-        Execute a tool using the function map.
+        Execute a tool using the function map with OOM handling.
 
         Args:
             tool_name: The name of the tool to execute
@@ -42,18 +42,19 @@ class BaseScheduler():
         Returns:
             The result of the tool execution
         """
-        # Get the function name from the tool name
-
+        # Import the OOM handling function
+        from agent.registry import execute_tool_with_oom_handling
+        
         # Get the function from the function map
         func = self.function_map[tool_name]
 
         try:
-            # Execute the function with the provided arguments
+            # Execute the function with OOM handling and retry mechanism
             if isinstance(tool_args, dict):
-                # Call the function with the arguments as kwargs
-                result = func(**tool_args)
+                # Call the function with the arguments as kwargs using OOM handling
+                result = execute_tool_with_oom_handling(tool_name, func, **tool_args)
             else:
-                result = func(tool_args)
+                result = execute_tool_with_oom_handling(tool_name, func, tool_args)
 
             return result
         except Exception as e:
